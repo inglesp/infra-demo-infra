@@ -1,0 +1,11 @@
+# import_tasks, not include_tasks, so that the tasks inherit the role's
+# ansible_pull tag, which the cloud-init bootstrap runs with --tags. Included
+# tasks wouldn't, so the bootstrap would skip them.
+- ansible.builtin.import_tasks: host.yml
+- ansible.builtin.import_tasks: dokku.yml
+- ansible.builtin.import_tasks: volume.yml
+- ansible.builtin.import_tasks: app.yml
+- ansible.builtin.import_tasks: alerts.yml
+# Last, since it runs the handlers, including restarting the app, before
+# starting the deploy timer
+- ansible.builtin.import_tasks: deploy.yml

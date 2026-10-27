@@ -1,0 +1,21 @@
+- name: Set the alert webhook
+  ansible.builtin.copy:
+    content: "{{ alert_webhook_url }}"
+    dest: /etc/web-app/alert-webhook
+    mode: "0600"
+  no_log: true
+
+- name: Install the alert scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /usr/local/bin/{{ item }}
+    mode: "0755"
+  loop: [notify-failure, notify-recovery]
+
+- name: Install the alert services
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    mode: "0644"
+  loop: [notify-failure@.service, notify-recovery@.service]
+  notify: Reload systemd

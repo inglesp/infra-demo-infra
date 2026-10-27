@@ -1,0 +1,34 @@
+#!/bin/bash
+# Post to Slack that a unit has failed, with the end of the failed run's log,
+# unless it was already failing.
+# Usage: notify-failure <unit>
+set -euo pipefail
+
+unit=$1
+
+# The timer reruns a failing unit every minute, so only post when it starts
+# failing. notify-recovery removes this when it next succeeds.
+failing=/var/lib/web-app/failing-$unit
+if [ -e "$failing" ]; then
+    exit 0
+fi
+
+# The ID of the unit's last run, which is the one that failed
+invocation=$(systemctl show --property=InvocationID --value "$unit")
+
+# Leave out ansible-pull's git step, which prints a JSON object, if it
+# succeeded, and the lines sudo logs for each dokku command. grep fails if it
+# leaves no lines, which isn't an error here.
+log=$(journalctl --no-pager --output cat _SYSTEMD_INVOCATION_ID="$invocation" |
+    awk '/\| (SUCCESS|CHANGED) => \{$/ { in_git = 1 } !in_git { print } in_git && /^\}$/ { in_git = 0 }' |
+    { grep -v -E 'COMMAND=|^pam_unix' || true; } |
+    tail -40)
+text=$(printf '%s failed on %s\n```\n%s\n```' "$unit" "$(hostname)" "$log")
+
+jq -n --arg text "$text" '{text: $text}' |
+    curl --silent --show-error --fail --max-time 10 \
+        --header 'Content-Type: application/json' --data @- \
+        "$(cat /etc/web-app/alert-webhook)"
+
+# Only after posting, so that if posting fails, the next failure tries again
+touch "$failing"

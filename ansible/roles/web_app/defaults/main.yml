@@ -1,0 +1,29 @@
+# Dokku's letsencrypt plugin, pinned to a commit, since a tag can be moved
+letsencrypt_plugin_commit: db2361a46a69be50f2560c1653fc0a386e6e5649  # 0.25.2
+
+# Where Let's Encrypt sends warnings about certificates that are about to expire
+letsencrypt_email: peter.inglesby@thedatalab.org
+
+# The port the app listens on in its container (see the Dockerfile)
+app_port: 8000
+
+# The app's environment, set with dokku config:set
+app_env:
+  DJANGO_ALLOWED_HOSTS: "{{ domain }}"
+  DJANGO_SECRET_KEY: "{{ secret_key }}"
+
+# Secret environment variables for the app, set in host_vars/<app>/vault.yml
+app_secret_env: {}
+
+# The UID the app runs as in its image (see the Dockerfile)
+app_uid: 10001
+
+# The volume's device, named after the volume, which is unique
+volume_device: /dev/disk/by-id/scsi-0DO_Volume_{{ volume_name }}
+
+# Where the volume, and so all persistent data, is mounted
+data_dir: /srv/{{ app_name }}/data
+
+# The volume, mounted into the container where the image keeps its data
+# (DATABASE_PATH in the Dockerfile)
+app_storage_mount: "{{ data_dir }}:/data"

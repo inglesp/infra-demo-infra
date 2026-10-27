@@ -1,0 +1,24 @@
+# jq is for the deploy and alert scripts
+- name: Install Docker and jq
+  ansible.builtin.apt:
+    name: [docker.io, jq]
+    update_cache: true
+    # Don't refresh a cache that's under an hour old, so reruns change nothing
+    cache_valid_time: 3600
+
+- name: Install the service that blocks containers from the metadata service
+  ansible.builtin.copy:
+    src: block-metadata.service
+    dest: /etc/systemd/system/block-metadata.service
+    mode: "0644"
+  notify: Reload systemd
+
+# So that systemd has loaded the service before it's started
+- name: Run handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Block containers from the metadata service
+  ansible.builtin.systemd_service:
+    name: block-metadata.service
+    enabled: true
+    state: started

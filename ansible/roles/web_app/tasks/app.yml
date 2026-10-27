@@ -1,0 +1,72 @@
+# Dokku has no declarative config, so each setting is read first, and only
+# changed when it differs.
+- name: List Dokku's apps
+  ansible.builtin.command: dokku --quiet apps:list
+  register: dokku_apps
+  changed_when: false
+
+- name: Create the Dokku app
+  ansible.builtin.command: dokku apps:create {{ app_name }}
+  when: app_name not in dokku_apps.stdout_lines
+
+# If the app has only just been created, there's nothing to read, so the domain
+# is set regardless
+- name: Read the app's domains
+  ansible.builtin.command: dokku domains:report {{ app_name }} --domains-app-vhosts
+  register: dokku_app_domains
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+
+- name: Set the app's domain
+  ansible.builtin.command: dokku domains:set {{ app_name }} {{ domain }}
+  when: dokku_app_domains is skipped or dokku_app_domains.stdout.split() != [domain]
+
+- name: Read whether letsencrypt is active for the app
+  ansible.builtin.command: dokku letsencrypt:report {{ app_name }} --letsencrypt-active
+  register: letsencrypt_active
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+
+# Otherwise Dokku publishes the port the image exposes, rather than 80
+- name: Read the app's port mappings
+  ansible.builtin.command: dokku ports:report {{ app_name }} --ports-map
+  register: dokku_app_ports
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+
+# Enabling letsencrypt adds a mapping for 443, and disabling it removes it
+- name: Route ports 80 and 443 to the app
+  vars:
+    app_ports: >-
+      {{ ["http:80:" ~ app_port]
+         + (["https:443:" ~ app_port] if letsencrypt_active is not skipped and letsencrypt_active.stdout == "true" else []) }}
+  ansible.builtin.command: dokku ports:set {{ app_name }} {{ app_ports | join(" ") }}
+  when: dokku_app_ports is skipped or dokku_app_ports.stdout.split() != app_ports
+
+- name: Read the app's storage mounts
+  ansible.builtin.command: dokku --quiet storage:list {{ app_name }}
+  register: dokku_app_storage
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+
+- name: Mount the volume into the app's container
+  ansible.builtin.command: dokku storage:mount {{ app_name }} {{ app_storage_mount }}
+  when: dokku_app_storage is skipped or app_storage_mount not in dokku_app_storage.stdout_lines
+  notify: Restart the app
+
+# The environment holds secrets, so these tasks don't log their output
+- name: Read the app's environment
+  ansible.builtin.command: dokku config:export --format json {{ app_name }}
+  register: dokku_config
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+  no_log: true
+
+# Each key is set on its own, and only if it differs, since config:set
+# restarts the app. argv passes the value as it is, without splitting it.
+- name: Set the app's environment
+  ansible.builtin.command:
+    argv: [dokku, config:set, "{{ app_name }}", "{{ item.key }}={{ item.value }}"]
+  loop: "{{ app_env | combine(app_secret_env) | dict2items }}"
+  when: dokku_config is skipped or (dokku_config.stdout | from_json).get(item.key) != item.value
+  no_log: true

@@ -1,0 +1,46 @@
+# DigitalOcean mounts a newly attached volume under /mnt with its own systemd
+# unit. We mount it ourselves, so remove that.
+- name: Remove DigitalOcean's mount of the volume
+  vars:
+    do_mount_unit: mnt-{{ volume_name | replace('-', '_') }}.mount
+  block:
+    - name: Find DigitalOcean's mount unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/{{ do_mount_unit }}
+      register: do_mount_unit_file
+
+    - name: Stop DigitalOcean's mount unit
+      ansible.builtin.systemd_service:
+        name: "{{ do_mount_unit }}"
+        state: stopped
+        enabled: false
+      when: do_mount_unit_file.stat.exists
+
+    - name: Remove DigitalOcean's mount unit
+      ansible.builtin.file:
+        path: /etc/systemd/system/{{ do_mount_unit }}
+        state: absent
+      notify: Reload systemd
+
+# On a new droplet, the volume can be attached after Ansible has started
+- name: Wait for the volume's device
+  ansible.builtin.wait_for:
+    path: "{{ volume_device }}"
+    timeout: 120
+
+- name: Mount the volume
+  ansible.posix.mount:
+    path: "{{ data_dir }}"
+    src: "{{ volume_device }}"
+    fstype: ext4
+    # nofail, so that the droplet still boots if the volume is missing
+    opts: defaults,nofail,discard,noatime
+    state: mounted
+
+- name: Give the data directory to the app's user
+  ansible.builtin.file:
+    path: "{{ data_dir }}"
+    state: directory
+    owner: "{{ app_uid }}"
+    group: "{{ app_uid }}"
+    mode: "0755"

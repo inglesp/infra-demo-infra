@@ -1,0 +1,12 @@
+[Unit]
+Description=Deploy the app's image to Dokku
+After=docker.service
+Requires=docker.service
+OnFailure=notify-failure@%n.service
+OnSuccess=notify-recovery@%n.service
+
+[Service]
+Type=oneshot
+# So that ansible-pull's output is logged in order with its subprocesses'
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/local/bin/deploy

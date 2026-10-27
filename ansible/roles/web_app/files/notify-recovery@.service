@@ -1,0 +1,6 @@
+[Unit]
+Description=Announce that %i has recovered
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/notify-recovery %i

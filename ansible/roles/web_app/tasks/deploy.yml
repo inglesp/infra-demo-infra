@@ -1,0 +1,37 @@
+- name: Set the image to deploy
+  ansible.builtin.copy:
+    content: "{{ image }}:{{ image_tag }}\n"
+    dest: /etc/web-app/image
+    mode: "0644"
+
+- name: Install the deploy script
+  ansible.builtin.copy:
+    src: deploy
+    dest: /usr/local/bin/deploy
+    mode: "0755"
+
+- name: Install the deploy service
+  ansible.builtin.copy:
+    src: deploy.service
+    dest: /etc/systemd/system/deploy.service
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Install the deploy timer
+  ansible.builtin.copy:
+    src: deploy.timer
+    dest: /etc/systemd/system/deploy.timer
+    mode: "0644"
+  notify: Reload systemd
+
+# So that systemd has loaded the deploy units before anything starts them
+- name: Run handlers
+  ansible.builtin.meta: flush_handlers
+
+# A timer doesn't start its service again while it's still running, so slow
+# deploys don't pile up
+- name: Start the deploy timer
+  ansible.builtin.systemd_service:
+    name: deploy.timer
+    enabled: true
+    state: started

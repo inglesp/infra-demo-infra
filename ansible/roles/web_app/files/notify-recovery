@@ -1,0 +1,22 @@
+#!/bin/bash
+# Post to Slack that a unit has recovered, if notify-failure said it had
+# failed. Most successful runs follow other successful runs, so do nothing.
+# Usage: notify-recovery <unit>
+set -euo pipefail
+
+unit=$1
+
+failing=/var/lib/web-app/failing-$unit
+if [ ! -e "$failing" ]; then
+    exit 0
+fi
+
+text=$(printf '%s has recovered on %s' "$unit" "$(hostname)")
+
+jq -n --arg text "$text" '{text: $text}' |
+    curl --silent --show-error --fail --max-time 10 \
+        --header 'Content-Type: application/json' --data @- \
+        "$(cat /etc/web-app/alert-webhook)"
+
+# Only after posting, so that if posting fails, the next success tries again
+rm "$failing"

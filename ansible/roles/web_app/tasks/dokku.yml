@@ -1,0 +1,82 @@
+- name: Add Dokku's apt repository
+  ansible.builtin.deb822_repository:
+    name: dokku
+    types: deb
+    uris: https://packagecloud.io/dokku/dokku/ubuntu/
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: main
+    signed_by: https://packagecloud.io/dokku/dokku/gpgkey
+  register: dokku_repo
+
+# The cache was probably refreshed above, so cache_valid_time wouldn't refresh
+# it again to pick up the new repository
+- name: Update the apt cache for Dokku's repository
+  ansible.builtin.apt:
+    update_cache: true
+  when: dokku_repo.changed
+
+# skip_key_file: we don't deploy with `git push`, so Dokku needs no SSH key
+# web_config: don't serve Dokku's old web-based setup page
+- name: Answer Dokku's install questions
+  ansible.builtin.debconf:
+    name: dokku
+    question: dokku/{{ item.question }}
+    vtype: "{{ item.vtype }}"
+    value: "{{ item.value }}"
+  loop:
+    - { question: vhost_enable, vtype: boolean, value: "true" }
+    - { question: hostname, vtype: string, value: "{{ domain }}" }
+    - { question: skip_key_file, vtype: boolean, value: "true" }
+    - { question: web_config, vtype: boolean, value: "false" }
+    - { question: nginx_enable, vtype: boolean, value: "true" }
+
+- name: Install Dokku
+  ansible.builtin.apt:
+    name: dokku
+  notify: Install Dokku's plugin dependencies
+
+- name: List Dokku's plugins
+  ansible.builtin.command: dokku --quiet plugin:list
+  register: dokku_plugins
+  changed_when: false
+
+# The plugin's checkout is owned by dokku, so installing it adds it to root's
+# safe.directory in ~/.gitconfig, which git needs to read it as root. systemd
+# doesn't set HOME for the deploy service, so it's set here.
+- name: Install and update Dokku's letsencrypt plugin
+  environment:
+    HOME: /root
+  block:
+    # Each line of plugin:list starts with the plugin's name
+    - name: Install Dokku's letsencrypt plugin
+      ansible.builtin.command: >-
+        dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
+        --committish {{ letsencrypt_plugin_commit }} --name letsencrypt
+      when: "'letsencrypt' not in dokku_plugins.stdout_lines | map('split') | map('first') | list"
+
+    - name: Read the letsencrypt plugin's commit
+      ansible.builtin.command: git -C /var/lib/dokku/plugins/available/letsencrypt rev-parse HEAD
+      register: letsencrypt_plugin_head
+      changed_when: false
+
+    - name: Update Dokku's letsencrypt plugin
+      ansible.builtin.command: dokku plugin:update letsencrypt {{ letsencrypt_plugin_commit }}
+      when: letsencrypt_plugin_head.stdout != letsencrypt_plugin_commit
+
+- name: Read letsencrypt's global settings
+  ansible.builtin.command: dokku letsencrypt:report --global --format json
+  register: letsencrypt_global
+  changed_when: false
+
+- name: Set letsencrypt's email
+  ansible.builtin.command: dokku letsencrypt:set --global email {{ letsencrypt_email }}
+  when: (letsencrypt_global.stdout | from_json)["global-email"] != letsencrypt_email
+
+- name: Read the status of letsencrypt's renewal cron job
+  ansible.builtin.command: dokku letsencrypt:cron-job
+  register: letsencrypt_cron_job
+  changed_when: false
+
+- name: Add letsencrypt's renewal cron job
+  ansible.builtin.command: dokku letsencrypt:cron-job --add
+  when: "'cron job is not enabled' in letsencrypt_cron_job.stdout"

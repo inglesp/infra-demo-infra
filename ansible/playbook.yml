@@ -1,0 +1,7 @@
+- name: Configure web app droplets
+  hosts: all
+  roles:
+    # Tagged so that a new droplet's cloud-init bootstrap, which runs
+    # `ansible-pull --tags ansible_pull`, runs the whole playbook
+    - role: web_app
+      tags: [ansible_pull]

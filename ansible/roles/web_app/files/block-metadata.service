@@ -1,0 +1,20 @@
+# DigitalOcean's metadata service serves the droplet's user_data, which holds
+# secrets, to anything on the droplet that asks. This stops containers asking.
+#
+# DOCKER-USER only sees traffic forwarded from containers, so the host can
+# still reach the metadata service. Being wanted by and bound to Docker, this
+# adds the rule whenever Docker starts, and the -C check stops it adding it
+# twice.
+
+[Unit]
+Description=Block containers from the metadata service
+After=docker.service
+BindsTo=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254 -j DROP 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254 -j DROP'
+
+[Install]
+WantedBy=docker.service
