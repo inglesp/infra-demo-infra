@@ -24,3 +24,21 @@ droplets:
         image_tag: latest
         env:
           DJANGO_ALLOWED_HOSTS: alpha-infra-demo.opensafely.org
+  demo-2:
+    region: lon1
+    size: s-1vcpu-1gb
+    apps:
+      beta:
+        domain: beta-infra-demo.opensafely.org
+        volume_size: 1
+        image: ghcr.io/inglesp/infra-demo-app
+        image_tag: latest
+        env:
+          DJANGO_ALLOWED_HOSTS: beta-infra-demo.opensafely.org
+      gamma:
+        domain: gamma-infra-demo.opensafely.org
+        volume_size: 1
+        image: ghcr.io/inglesp/infra-demo-app
+        image_tag: sha-e64f51c0b8228d828ae3902d0314d803217fce79
+        env:
+          DJANGO_ALLOWED_HOSTS: gamma-infra-demo.opensafely.org
