@@ -1,22 +1,21 @@
 #!/bin/bash
-# Apply the playbook from the repo if it has changed, then deploy the app's
-# image to Dokku if it differs from what's deployed, and make sure TLS is
-# enabled. The app and image are read from files that Ansible writes.
+# Apply the playbook from the repo if it has changed, then deploy each app with
+# deploy-app. The droplet's settings and its apps are read from files that
+# cloud-init and Ansible write.
 set -euo pipefail
 
 config=/etc/web-app/vars.json
 checkout=/var/lib/web-app/repo
-app=$(jq -r .app_name $config)
-config_failed=0
+failed=0
 
-# Running the playbook here, in the same service as the deploy, means the two
-# never compete for Dokku's lock on the app, and a change to the image is
+# Running the playbook here, in the same service as the deploys, means the two
+# never compete for Dokku's lock on an app, and a change to an image is
 # deployed in the same run. The arguments match the cloud-init bootstrap's.
 if ! ansible-pull --only-if-changed \
     --url "$(jq -r .repo_url $config)" \
     --checkout "$(jq -r .repo_branch $config)" \
     --directory $checkout \
-    --inventory "$app," \
+    --inventory "$(jq -r .droplet_name $config)," \
     --connection local \
     --extra-vars @$config \
     --vault-password-file /etc/web-app/vault-password \
@@ -26,26 +25,17 @@ if ! ansible-pull --only-if-changed \
     # afresh, which counts as a change, and so applies the playbook again.
     echo "Config run failed: removing $checkout so that the next run retries it" >&2
     rm -rf $checkout
-    # Carry on, so that a bad config change doesn't block deploys of the app's
+    # Carry on, so that a bad config change doesn't block deploys of the apps'
     # code, but fail the run at the end, so that it shows as failed
-    config_failed=1
+    failed=1
 fi
 
-image=$(cat /etc/web-app/image)
+# Likewise, one app failing to deploy doesn't stop the others
+for app in $(jq -r 'keys[]' /etc/web-app/apps.json); do
+    if ! deploy-app "$app"; then
+        echo "Deploying $app failed" >&2
+        failed=1
+    fi
+done
 
-docker pull --quiet "$image" > /dev/null
-digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
-deployed=$(dokku git:report "$app" --git-source-image)
-
-if [ "$digest" != "$deployed" ]; then
-    # Deploy by digest, so Dokku records exactly which build is running
-    dokku git:from-image "$app" "$digest"
-fi
-
-# Let's Encrypt checks the domain by fetching a file from the app over HTTP, so
-# this needs the app to have been deployed
-if [ "$(dokku letsencrypt:report "$app" --letsencrypt-active)" != "true" ]; then
-    dokku letsencrypt:enable "$app"
-fi
-
-exit $config_failed
+exit $failed

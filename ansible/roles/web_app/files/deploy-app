@@ -1,0 +1,26 @@
+#!/bin/bash
+# Deploy an app's image to Dokku if it differs from what's deployed, and make
+# sure TLS is enabled. The image is read from apps.json, which Ansible writes.
+# Usage: deploy-app <app>
+#
+# This is a script rather than a function in deploy, since bash ignores set -e
+# in a function that's called as an if condition.
+set -euo pipefail
+
+app=$1
+image=$(jq -r --arg app "$app" '.[$app] | .image + ":" + .image_tag' /etc/web-app/apps.json)
+
+docker pull --quiet "$image" > /dev/null
+digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
+deployed=$(dokku git:report "$app" --git-source-image)
+
+if [ "$digest" != "$deployed" ]; then
+    # Deploy by digest, so Dokku records exactly which build is running
+    dokku git:from-image "$app" "$digest"
+fi
+
+# Let's Encrypt checks the domain by fetching a file from the app over HTTP, so
+# this needs the app to have been deployed
+if [ "$(dokku letsencrypt:report "$app" --letsencrypt-active)" != "true" ]; then
+    dokku letsencrypt:enable "$app"
+fi

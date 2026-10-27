@@ -6,16 +6,3 @@
 - name: Install Dokku's plugin dependencies
   ansible.builtin.command: dokku plugin:install-dependencies --core
   changed_when: true
-
-# An app that hasn't been deployed can't be restarted, but picks up any changes
-# when it's first deployed
-- name: Check whether the app has been deployed
-  ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
-  register: dokku_app_deployed
-  changed_when: false
-  listen: Restart the app
-
-- name: Restart the app
-  ansible.builtin.command: dokku ps:restart {{ app_name }}
-  when: dokku_app_deployed.stdout == "true"
-  listen: Restart the app

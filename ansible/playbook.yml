@@ -1,7 +1,8 @@
 - name: Configure web app droplets
   hosts: all
+  vars_files:
+    - ../droplets.yml
+  vars:
+    apps: "{{ droplets[inventory_hostname].apps }}"
   roles:
-    # Tagged so that a new droplet's cloud-init bootstrap, which runs
-    # `ansible-pull --tags ansible_pull`, runs the whole playbook
-    - role: web_app
-      tags: [ansible_pull]
+    - web_app

@@ -1,14 +1,17 @@
-- name: Set the image to deploy
+# The apps' images, for the deploy scripts. This holds no secrets: they're in
+# each app's Dokku config.
+- name: Set the apps to deploy
   ansible.builtin.copy:
-    content: "{{ image }}:{{ image_tag }}\n"
-    dest: /etc/web-app/image
+    content: "{{ apps | to_nice_json }}\n"
+    dest: /etc/web-app/apps.json
     mode: "0644"
 
-- name: Install the deploy script
+- name: Install the deploy scripts
   ansible.builtin.copy:
-    src: deploy
-    dest: /usr/local/bin/deploy
+    src: "{{ item }}"
+    dest: /usr/local/bin/{{ item }}
     mode: "0755"
+  loop: [deploy, deploy-app]
 
 - name: Install the deploy service
   ansible.builtin.copy:

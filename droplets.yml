@@ -1,0 +1,15 @@
+# The droplets, and the apps each one runs. OpenTofu and Ansible both read this.
+#
+# droplets:
+#   <droplet>:
+#     region: lon1
+#     size: s-1vcpu-1gb
+#     apps:
+#       <app>:
+#         domain: <app>.example.org  # gets its own DNS zone
+#         volume_size: 1             # GiB
+#         image: ghcr.io/<owner>/<image>
+#         image_tag: latest
+#         env:                       # the app's environment; secrets go in the droplet's vault
+#           SOME_SETTING: ...
+droplets: {}

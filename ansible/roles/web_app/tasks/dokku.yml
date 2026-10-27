@@ -17,6 +17,7 @@
 
 # skip_key_file: we don't deploy with `git push`, so Dokku needs no SSH key
 # web_config: don't serve Dokku's old web-based setup page
+# hostname: Dokku's global domain, unused, since each app sets its own
 - name: Answer Dokku's install questions
   ansible.builtin.debconf:
     name: dokku
@@ -25,7 +26,7 @@
     value: "{{ item.value }}"
   loop:
     - { question: vhost_enable, vtype: boolean, value: "true" }
-    - { question: hostname, vtype: string, value: "{{ domain }}" }
+    - { question: hostname, vtype: string, value: "{{ inventory_hostname }}" }
     - { question: skip_key_file, vtype: boolean, value: "true" }
     - { question: web_config, vtype: boolean, value: "false" }
     - { question: nginx_enable, vtype: boolean, value: "true" }
