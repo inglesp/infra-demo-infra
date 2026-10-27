@@ -129,12 +129,8 @@ ssh root@$(just tofu output -json ips | jq -r '.["<droplet>"]')
 The droplet's first run needs its vault, which needs its password, so the password is created first:
 
 1. Add the droplet and its apps to `droplets.yml`, and delegate each app's zone (see [Infrastructure](#infrastructure)).
-2. Create the droplet's vault password:
-
-   ```sh
-   just tofu apply -target='module.droplet["<droplet>"].random_password.vault_password'
-   ```
-
+2. Create the droplet's vault password, with `just set-vault-password <droplet>`.
+   This applies only the password, so OpenTofu warns that the changes may be incomplete: the `just apply` in step 5 makes the rest.
 3. Add `alert_webhook_url` and each app's `app_secrets` (see [Secrets](#secrets)) with `just vault-edit <droplet>`.
 4. Commit and push.
 5. Create the droplet and its apps' resources with `just apply`.

@@ -20,6 +20,9 @@ check:
     just tofu validate
     cd ansible && uv run ansible-playbook --syntax-check -i localhost, playbook.yml
 
+# Create a new droplet's vault password, before the droplet itself (see the README's "Add a droplet")
+set-vault-password droplet: (tofu "apply" '-target=module.droplet["' + droplet + '"].random_password.vault_password')
+
 # Edit a droplet's secrets, in host_vars/<droplet>/vault.yml, creating the file if needed
 vault-edit droplet:
     #!/usr/bin/env bash
