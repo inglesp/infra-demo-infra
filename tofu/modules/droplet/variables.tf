@@ -1,5 +1,5 @@
 variable "name" {
-  description = "The app's name, used as the droplet's name"
+  description = "The droplet's name, which is also its Ansible inventory host"
   type        = string
 }
 
@@ -10,16 +10,6 @@ variable "region" {
 
 variable "size" {
   description = "The droplet size, e.g. s-1vcpu-1gb"
-  type        = string
-}
-
-variable "volume_size" {
-  description = "Size of the data volume in GiB"
-  type        = number
-}
-
-variable "domain" {
-  description = "The DNS zone for the app, delegated to DigitalOcean; records go at its apex"
   type        = string
 }
 

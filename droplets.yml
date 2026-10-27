@@ -5,11 +5,22 @@
 #     region: lon1
 #     size: s-1vcpu-1gb
 #     apps:
-#       <app>:
+#       <app>:                       # unique across all droplets
 #         domain: <app>.example.org  # gets its own DNS zone
 #         volume_size: 1             # GiB
 #         image: ghcr.io/<owner>/<image>
 #         image_tag: latest
 #         env:                       # the app's environment; secrets go in the droplet's vault
 #           SOME_SETTING: ...
-droplets: {}
+droplets:
+  demo-1:
+    region: lon1
+    size: s-1vcpu-1gb
+    apps:
+      alpha:
+        domain: alpha-infra-demo.opensafely.org
+        volume_size: 1
+        image: ghcr.io/inglesp/infra-demo-app
+        image_tag: latest
+        env:
+          DJANGO_ALLOWED_HOSTS: alpha-infra-demo.opensafely.org

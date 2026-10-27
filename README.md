@@ -5,15 +5,18 @@ Infrastructure and configuration as code for demo apps such as [infra-demo-app](
 ## Infrastructure
 
 Apps run on DigitalOcean droplets, managed with [OpenTofu](https://opentofu.org/) in `tofu/`.
-Each app in `local.apps` in `tofu/main.tf` gets its own droplet, created by the `web-app` module.
-There are no apps yet.
-Each droplet has a block storage volume attached, for all persistent data, so that the droplet itself can be replaced.
-OpenTofu refuses to destroy a volume: to really delete one, first remove `prevent_destroy` from the `web-app` module.
-Changing a droplet's image or SSH keys only affects new droplets, rather than replacing existing ones.
-Each droplet has a cloud firewall that allows inbound SSH, HTTP, HTTPS and ICMP, and all outbound traffic.
-Each app also has its own DNS zone in DigitalOcean, with A and AAAA records pointing at its droplet.
+`droplets.yml` lists the droplets, and the apps each one runs.
+OpenTofu creates each droplet with the `droplet` module, and each app's resources with the `app` module.
 
-At a droplet's first boot, cloud-init writes its settings and secrets to `/etc/web-app/`, installs Ansible, and runs `ansible-pull` against `main` of this repo, which configures the droplet (see [Server configuration](#server-configuration)).
+Each droplet has a cloud firewall that allows inbound SSH, HTTP, HTTPS and ICMP, and all outbound traffic.
+Changing a droplet's image or SSH keys only affects new droplets, rather than replacing existing ones.
+
+Each app has a block storage volume attached to its droplet, for all its persistent data, so that the droplet itself can be replaced.
+OpenTofu refuses to destroy a volume: to really delete one, first remove `prevent_destroy` from the `app` module.
+Each app also has its own DNS zone in DigitalOcean, with A and AAAA records pointing at its droplet.
+Adding or removing an app doesn't change its droplet.
+
+At a droplet's first boot, cloud-init writes its settings and vault password to `/etc/web-app/`, installs Ansible, and runs `ansible-pull` against `main` of this repo, which configures the droplet (see [Server configuration](#server-configuration)).
 Changing the cloud-init config (the droplet's `user_data`) replaces the droplet: see [After a droplet is replaced](#after-a-droplet-is-replaced).
 
 You need:
@@ -45,7 +48,7 @@ Its actions are pinned to commit SHAs.
 OpenTofu's state is kept in the `inglesp-infra-demo-tofu-state` Spaces bucket, in `lon1`, as `infra-demo-infra.tfstate`.
 The bucket was created by hand, since it can't hold its own state.
 The state is encrypted with the state passphrase: if the passphrase is lost, so is the state.
-The state holds secrets, such as each app's Django secret key, which OpenTofu generates and puts in the droplet's `user_data`.
+The state holds secrets: each droplet's vault password, which OpenTofu generates and puts in the droplet's `user_data`.
 State is locked while OpenTofu uses it, with a lock file next to it in the bucket, so two runs can't change it at once.
 
 ## Server configuration
@@ -118,20 +121,47 @@ To send a test alert, run `systemctl start notify-failure@deploy.service` on the
 ### SSH into a droplet
 
 ```sh
-ssh root@$(just tofu output -json ips | jq -r '.["<app>"]')
+ssh root@$(just tofu output -json ips | jq -r '.["<droplet>"]')
 ```
+
+### Add a droplet
+
+The droplet's first run needs its vault, which needs its password, so the password is created first:
+
+1. Add the droplet and its apps to `droplets.yml`, and delegate each app's zone (see [Infrastructure](#infrastructure)).
+2. Create the droplet's vault password:
+
+   ```sh
+   just tofu apply -target='module.droplet["<droplet>"].random_password.vault_password'
+   ```
+
+3. Add `alert_webhook_url` and each app's `app_secrets` (see [Secrets](#secrets)) with `just vault-edit <droplet>`.
+4. Commit and push.
+5. Create the droplet and its apps' resources with `just apply`.
+
+The droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys its apps and enables TLS.
+`cloud-init status --wait` on the droplet waits for the first boot to finish.
+
+### Add an app to a droplet
+
+1. Delegate the app's zone (see [Infrastructure](#infrastructure)).
+2. Add the app's `app_secrets` with `just vault-edit <droplet>`.
+3. Add the app to the droplet in `droplets.yml`.
+4. Create the app's volume, attachment and zone with `just apply`.
+5. Commit and push.
+
+Apply before pushing: otherwise the droplet's next run waits for a volume that doesn't exist yet, and fails.
 
 ### After a droplet is replaced
 
-The droplet's data is on its volume, which is moved to the new droplet, but everything else needs setting up again.
+The droplet's apps' data is on their volumes, which are moved to the new droplet, but everything else needs setting up again.
 The new droplet has a new IP address and new SSH host keys, so first remove the old keys, using the old IP address:
 
 ```sh
-ssh-keygen -R <domain>
 ssh-keygen -R <old IP address>
 ```
 
-The new droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys the app and enables TLS.
+The new droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys its apps and enables TLS.
 `cloud-init status --wait` on the droplet waits for the first boot to finish.
 The DNS records can take up to 30 minutes to point at the new IP address everywhere.
 

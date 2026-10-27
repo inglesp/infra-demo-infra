@@ -6,35 +6,49 @@ locals {
   repo_url    = "https://github.com/inglesp/infra-demo-infra.git"
   repo_branch = "main"
 
-  # One droplet per app
-  apps = {}
+  # The droplets and their apps, which Ansible also reads
+  droplets = yamldecode(file("${path.root}/../droplets.yml")).droplets
+
+  # Every app, on every droplet, with its droplet's name and region
+  apps = merge([
+    for droplet_name, droplet in local.droplets : {
+      for app_name, app in droplet.apps : app_name => merge(app, { droplet = droplet_name, region = droplet.region })
+    }
+  ]...)
 }
 
 data "digitalocean_ssh_key" "admin" {
   name = local.ssh_key_name
 }
 
-module "web_app" {
-  source   = "./modules/web-app"
-  for_each = local.apps
+module "droplet" {
+  source   = "./modules/droplet"
+  for_each = local.droplets
 
   name        = each.key
   region      = each.value.region
   size        = each.value.size
-  volume_size = each.value.volume_size
-  domain      = each.value.domain
   ssh_key_ids = [data.digitalocean_ssh_key.admin.id]
   repo_url    = local.repo_url
   repo_branch = local.repo_branch
 }
 
-output "ips" {
-  description = "Each app's droplet's public IPv4 address"
-  value       = { for name, app in module.web_app : name => app.ipv4_address }
+module "app" {
+  source   = "./modules/app"
+  for_each = local.apps
+
+  name        = each.key
+  region      = each.value.region
+  volume_size = each.value.volume_size
+  domain      = each.value.domain
+  droplet = {
+    id           = module.droplet[each.value.droplet].id
+    ipv4_address = module.droplet[each.value.droplet].ipv4_address
+    ipv6_address = module.droplet[each.value.droplet].ipv6_address
+  }
 }
 
-output "vault_passwords" {
-  description = "Each app's password for its secrets, encrypted with ansible-vault"
-  value       = { for name, app in module.web_app : name => app.vault_password }
-  sensitive   = true
+output "ips" {
+  description = "Each droplet's public IPv4 address"
+  value       = { for name, droplet in module.droplet : name => droplet.ipv4_address }
 }
