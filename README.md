@@ -2,6 +2,8 @@
 
 Infrastructure and configuration as code for demo apps such as [infra-demo-app](https://github.com/inglesp/infra-demo-app).
 
+Most of the original development was done in the [infra-demo](https://github.com/inglesp/infra-demo/) repository.
+
 ## Infrastructure
 
 Apps run on DigitalOcean droplets, managed with [OpenTofu](https://opentofu.org/) in `tofu/`.
