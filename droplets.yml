@@ -37,7 +37,7 @@ droplets:
           DJANGO_ALLOWED_HOSTS: beta-infra-demo.opensafely.org
       gamma:
         domain: gamma-infra-demo.opensafely.org
-        volume_size: 1
+        volume_size: 2
         image: ghcr.io/inglesp/infra-demo-app
         image_tag: sha-e64f51c0b8228d828ae3902d0314d803217fce79
         env:
