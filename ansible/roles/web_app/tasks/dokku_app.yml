@@ -76,9 +76,15 @@
 
 # Each key is set on its own, and only if it differs, since config:set
 # restarts the app. argv passes the value as it is, without splitting it.
+#
+# Run as root, Dokku re-runs itself through sudo, which logs the full command,
+# and so the secret, to the journal, whatever no_log says. Run as dokku, it
+# doesn't, and sudo only logs Ansible's wrapper, which doesn't hold the secret.
 - name: Set the app's environment
   ansible.builtin.command:
     argv: [dokku, config:set, "{{ app_name }}", "{{ item.key }}={{ item.value }}"]
+  become: true
+  become_user: dokku
   loop: "{{ app_env | dict2items }}"
   when: dokku_config is skipped or (dokku_config.stdout | from_json).get(item.key) != item.value
   no_log: true
