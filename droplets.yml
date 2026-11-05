@@ -24,6 +24,7 @@ droplets:
         image_tag: latest
         env:
           DJANGO_ALLOWED_HOSTS: alpha-infra-demo.opensafely.org
+          DEMO_NON_SECRET: alpha not a secret
   demo-2:
     region: lon1
     size: s-1vcpu-1gb
@@ -35,6 +36,7 @@ droplets:
         image_tag: latest
         env:
           DJANGO_ALLOWED_HOSTS: beta-infra-demo.opensafely.org
+          DEMO_NON_SECRET: beta not a secret
       gamma:
         domain: gamma-infra-demo.opensafely.org
         volume_size: 2
@@ -42,3 +44,4 @@ droplets:
         image_tag: sha-e64f51c0b8228d828ae3902d0314d803217fce79
         env:
           DJANGO_ALLOWED_HOSTS: gamma-infra-demo.opensafely.org
+          DEMO_NON_SECRET: gamma not a secret
