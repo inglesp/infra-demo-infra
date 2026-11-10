@@ -110,6 +110,7 @@ Removing a variable from `env` or the vault doesn't remove it from the app: run 
 Each app's `image` and `image_tag` are set in `droplets.yml`, and Ansible writes the droplet's apps to `/etc/web-app/apps.json`.
 Every minute, a systemd timer on the droplet starts the `deploy` service, which first applies any changes to `main` with `ansible-pull`.
 Then, for each app, it pulls the image, and deploys it by digest if the digest differs from the one Dokku last deployed.
+Each deploy is logged to the journal as a `deploy-event`, with the app, image, digest, result and duration: see them with `journalctl -t deploy-event`.
 It then enables TLS for the app, if it isn't already enabled and the app has nginx in front of it.
 If one app fails to deploy, the others are still deployed, and the run shows as failed.
 So a new image goes live within a minute or so of being published, and a change to an image or tag is applied and deployed in the same run.

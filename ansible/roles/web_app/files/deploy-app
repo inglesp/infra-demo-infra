@@ -16,8 +16,18 @@ digest=$(docker image inspect --format '{{index .RepoDigests 0}}' "$image")
 deployed=$(dokku git:report "$app" --git-source-image)
 
 if [ "$digest" != "$deployed" ]; then
-    # Deploy by digest, so Dokku records exactly which build is running
-    dokku git:from-image "$app" "$digest"
+    # Deploy by digest, so Dokku records exactly which build is running. Each
+    # deploy is logged as an event, which can be forwarded to a log server.
+    start=$SECONDS
+    if dokku git:from-image "$app" "$digest"; then
+        result=success
+    else
+        result=failure
+    fi
+    logger -t deploy-event \
+        "event=deploy app=$app image=$image digest=$digest result=$result duration_s=$((SECONDS - start))"
+    # Still fail on failure, so that deploy marks the run as failed
+    [ "$result" = success ]
 fi
 
 # Let's Encrypt checks the domain by fetching a file from the app over HTTP, so
