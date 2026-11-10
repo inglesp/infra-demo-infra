@@ -15,6 +15,7 @@
 #         # Optional:
 #         nginx: false               # no nginx in front of the app, so no vhost, ports or TLS (default true)
 #         network: <network>         # reach other apps on the network as <app>.web
+#         checks: false              # stop the old container before starting the new one (default true)
 droplets:
   demo-1:
     region: lon1

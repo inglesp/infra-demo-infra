@@ -72,6 +72,7 @@ The playbook:
     - applies the app's optional settings in `droplets.yml`:
         - `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
         - `network` attaches the app to a Dokku network, creating it if needed, so that other apps on it can reach it as `<app>.web`
+        - `checks: false` turns off Dokku's zero-downtime deploys, so the old container stops before the new one starts, which an app that publishes a port on the host needs
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.

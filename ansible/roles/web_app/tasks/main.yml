@@ -14,6 +14,7 @@
     domain: "{{ app.value.domain | default(none) }}"
     app_nginx_required: "{{ app.value.nginx | default(true) }}"
     app_network: "{{ app.value.network | default(none) }}"
+    app_checks: "{{ app.value.checks | default(true) }}"
     app_env: "{{ app.value.env | combine(app_secrets[app.key]) }}"
 
 - ansible.builtin.import_tasks: alerts.yml

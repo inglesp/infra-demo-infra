@@ -94,6 +94,23 @@
       register: dokku_app_network_set
       when: dokku_app_network is skipped or dokku_app_network.stdout.split() != [app_network]
 
+# With checks disabled, Dokku stops the old container before starting the new
+# one, rather than running both for a while. An app that publishes a port on
+# the host needs this, since two containers can't both publish it.
+- name: Read the app's checks
+  ansible.builtin.command: dokku checks:report {{ app_name }} --checks-disabled-list
+  register: dokku_app_checks
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines
+
+- name: Disable the app's checks
+  ansible.builtin.command: dokku checks:disable {{ app_name }}
+  when: not app_checks and (dokku_app_checks is skipped or dokku_app_checks.stdout != "_all_")
+
+- name: Enable the app's checks
+  ansible.builtin.command: dokku checks:enable {{ app_name }}
+  when: app_checks and dokku_app_checks is not skipped and dokku_app_checks.stdout == "_all_"
+
 - name: Read the app's storage mounts
   ansible.builtin.command: dokku --quiet storage:list {{ app_name }}
   register: dokku_app_storage
