@@ -69,6 +69,7 @@ The playbook:
     - mounts the app's volume at `/srv/<app>/data`, owned by UID 10001, which every app's image must run as (and listen on port 8000), in place of DigitalOcean's own mount under `/mnt/`
     - creates the app in Dokku, and sets its domain, its environment (`env`, plus its secrets) and its ports
     - mounts the volume into the app's container at `/data`, where the app keeps its database
+    - applies the app's optional settings in `droplets.yml`: `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.
@@ -104,7 +105,7 @@ Removing a variable from `env` or the vault doesn't remove it from the app: run 
 Each app's `image` and `image_tag` are set in `droplets.yml`, and Ansible writes the droplet's apps to `/etc/web-app/apps.json`.
 Every minute, a systemd timer on the droplet starts the `deploy` service, which first applies any changes to `main` with `ansible-pull`.
 Then, for each app, it pulls the image, and deploys it by digest if the digest differs from the one Dokku last deployed.
-It then enables TLS for the app, if it isn't already enabled.
+It then enables TLS for the app, if it isn't already enabled and the app has nginx in front of it.
 If one app fails to deploy, the others are still deployed, and the run shows as failed.
 So a new image goes live within a minute or so of being published, and a change to an image or tag is applied and deployed in the same run.
 To deploy straight away, run `systemctl start deploy` on the droplet.

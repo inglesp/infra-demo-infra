@@ -26,27 +26,48 @@
       ansible.builtin.command: dokku domains:set {{ app_name }} {{ domain }}
       when: dokku_app_domains is skipped or dokku_app_domains.stdout.split() != [domain]
 
-- name: Read whether letsencrypt is active for the app
-  ansible.builtin.command: dokku letsencrypt:report {{ app_name }} --letsencrypt-active
-  register: letsencrypt_active
+# With `nginx: false`, Dokku doesn't put nginx in front of the app (Dokku calls
+# this its proxy), so the app has no vhost, ports or TLS
+- name: Read whether nginx is enabled for the app
+  ansible.builtin.command: dokku proxy:report {{ app_name }} --proxy-enabled
+  register: dokku_app_nginx
   changed_when: false
   when: app_name in dokku_apps.stdout_lines
 
-# Otherwise Dokku publishes the port the image exposes, rather than 80
-- name: Read the app's port mappings
-  ansible.builtin.command: dokku ports:report {{ app_name }} --ports-map
-  register: dokku_app_ports
-  changed_when: false
-  when: app_name in dokku_apps.stdout_lines
+- name: Disable nginx for the app
+  ansible.builtin.command: dokku proxy:disable {{ app_name }}
+  register: dokku_app_nginx_disable
+  when: not app_nginx_required and (dokku_app_nginx is skipped or dokku_app_nginx.stdout != "false")
 
-# Enabling letsencrypt adds a mapping for 443, and disabling it removes it
-- name: Route ports 80 and 443 to the app
-  vars:
-    app_ports: >-
-      {{ ["http:80:" ~ app_port]
-         + (["https:443:" ~ app_port] if letsencrypt_active is not skipped and letsencrypt_active.stdout == "true" else []) }}
-  ansible.builtin.command: dokku ports:set {{ app_name }} {{ app_ports | join(" ") }}
-  when: dokku_app_ports is skipped or dokku_app_ports.stdout.split() != app_ports
+- name: Enable nginx for the app
+  ansible.builtin.command: dokku proxy:enable {{ app_name }}
+  register: dokku_app_nginx_enable
+  when: app_nginx_required and dokku_app_nginx is not skipped and dokku_app_nginx.stdout == "false"
+
+- name: Set the app's ports
+  when: app_nginx_required
+  block:
+    - name: Read whether letsencrypt is active for the app
+      ansible.builtin.command: dokku letsencrypt:report {{ app_name }} --letsencrypt-active
+      register: letsencrypt_active
+      changed_when: false
+      when: app_name in dokku_apps.stdout_lines
+
+    # Otherwise Dokku publishes the port the image exposes, rather than 80
+    - name: Read the app's port mappings
+      ansible.builtin.command: dokku ports:report {{ app_name }} --ports-map
+      register: dokku_app_ports
+      changed_when: false
+      when: app_name in dokku_apps.stdout_lines
+
+    # Enabling letsencrypt adds a mapping for 443, and disabling it removes it
+    - name: Route ports 80 and 443 to the app
+      vars:
+        app_ports: >-
+          {{ ["http:80:" ~ app_port]
+             + (["https:443:" ~ app_port] if letsencrypt_active is not skipped and letsencrypt_active.stdout == "true" else []) }}
+      ansible.builtin.command: dokku ports:set {{ app_name }} {{ app_ports | join(" ") }}
+      when: dokku_app_ports is skipped or dokku_app_ports.stdout.split() != app_ports
 
 - name: Read the app's storage mounts
   ansible.builtin.command: dokku --quiet storage:list {{ app_name }}
@@ -59,17 +80,25 @@
   register: dokku_app_storage_mount
   when: dokku_app_storage is skipped or app_storage_mount not in dokku_app_storage.stdout_lines
 
-# A new mount only reaches the container when it restarts. An app that hasn't
-# been deployed can't be restarted, but gets the mount when it's first deployed.
-- name: Check whether the app has been deployed
-  ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
-  register: dokku_app_deployed
-  changed_when: false
-  when: dokku_app_storage_mount is changed
+# A change to the app's mounts or nginx only reaches the container when it
+# restarts. An app that hasn't been deployed can't be restarted, but gets them
+# when it's first deployed.
+- name: Restart the app if its container's settings changed
+  vars:
+    app_needs_restart: >-
+      {{ dokku_app_storage_mount is changed
+         or dokku_app_nginx_disable is changed
+         or dokku_app_nginx_enable is changed }}
+  block:
+    - name: Check whether the app has been deployed
+      ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
+      register: dokku_app_deployed
+      changed_when: false
+      when: app_needs_restart | bool
 
-- name: Restart the app
-  ansible.builtin.command: dokku ps:restart {{ app_name }}
-  when: dokku_app_storage_mount is changed and dokku_app_deployed.stdout == "true"
+    - name: Restart the app
+      ansible.builtin.command: dokku ps:restart {{ app_name }}
+      when: app_needs_restart | bool and dokku_app_deployed.stdout == "true"
 
 # The environment holds secrets, so these tasks don't log their output
 - name: Read the app's environment

@@ -12,6 +12,7 @@
     app_name: "{{ app.key }}"
     # Optional settings: see droplets.yml
     domain: "{{ app.value.domain | default(none) }}"
+    app_nginx_required: "{{ app.value.nginx | default(true) }}"
     app_env: "{{ app.value.env | combine(app_secrets[app.key]) }}"
 
 - ansible.builtin.import_tasks: alerts.yml
