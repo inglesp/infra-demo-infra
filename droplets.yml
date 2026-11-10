@@ -16,6 +16,8 @@
 #         nginx: false               # no nginx in front of the app, so no vhost, ports or TLS (default true)
 #         network: <network>         # reach other apps on the network as <app>.web
 #         checks: false              # stop the old container before starting the new one (default true)
+#         docker_options:            # extra `docker run` options, e.g. to publish a port on the host
+#           - "-p 1234:1234"
 droplets:
   demo-1:
     region: lon1

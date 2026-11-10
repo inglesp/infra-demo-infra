@@ -111,6 +111,21 @@
   ansible.builtin.command: dokku checks:enable {{ app_name }}
   when: app_checks and dokku_app_checks is not skipped and dokku_app_checks.stdout == "_all_"
 
+# Removing an option from droplets.yml doesn't remove it from the app: run
+# `dokku docker-options:remove <app> deploy "<option>"` on the droplet
+- name: Read the app's docker options
+  ansible.builtin.command: dokku docker-options:report {{ app_name }} --docker-options-deploy
+  register: dokku_app_docker_options
+  changed_when: false
+  when: app_name in dokku_apps.stdout_lines and app_docker_options | length > 0
+
+- name: Add the app's docker options
+  ansible.builtin.command:
+    argv: [dokku, docker-options:add, "{{ app_name }}", deploy, "{{ item }}"]
+  loop: "{{ app_docker_options }}"
+  register: dokku_app_docker_options_add
+  when: dokku_app_docker_options is skipped or item not in dokku_app_docker_options.stdout
+
 - name: Read the app's storage mounts
   ansible.builtin.command: dokku --quiet storage:list {{ app_name }}
   register: dokku_app_storage
@@ -122,8 +137,8 @@
   register: dokku_app_storage_mount
   when: dokku_app_storage is skipped or app_storage_mount not in dokku_app_storage.stdout_lines
 
-# A change to the app's mounts, nginx or network only reaches the container
-# when it restarts. An app that hasn't been deployed can't be restarted, but gets them
+# A change to the app's mounts, nginx, network or docker options only reaches
+# the container when it restarts. An app that hasn't been deployed can't be restarted, but gets them
 # when it's first deployed.
 - name: Restart the app if its container's settings changed
   vars:
@@ -131,7 +146,8 @@
       {{ dokku_app_storage_mount is changed
          or dokku_app_nginx_disable is changed
          or dokku_app_nginx_enable is changed
-         or dokku_app_network_set is changed }}
+         or dokku_app_network_set is changed
+         or dokku_app_docker_options_add is changed }}
   block:
     - name: Check whether the app has been deployed
       ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
