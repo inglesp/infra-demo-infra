@@ -19,7 +19,7 @@ droplets:
     apps:
       alpha:
         domain: alpha-infra-demo.opensafely.org
-        volume_size: 1
+        volume_size: 2
         image: ghcr.io/inglesp/infra-demo-app
         image_tag: latest
         env:
