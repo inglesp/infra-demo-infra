@@ -12,7 +12,7 @@
 # An app without a domain is only reached by other apps on the droplet, or
 # through a port it publishes itself, so it keeps Dokku's default
 - name: Set the app's domain
-  when: domain is not none
+  when: domain | length > 0
   block:
     # If the app has only just been created, there's nothing to read, so the
     # domain is set regardless
@@ -71,7 +71,7 @@
 
 # Apps on the same network reach each other as <app>.web
 - name: Attach the app to its network
-  when: app_network is not none
+  when: app_network | length > 0
   block:
     - name: Check whether the network exists
       ansible.builtin.command: dokku network:exists {{ app_network }}

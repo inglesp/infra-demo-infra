@@ -10,10 +10,11 @@
     label: "{{ app.key }}"
   vars:
     app_name: "{{ app.key }}"
-    # Optional settings: see droplets.yml
-    domain: "{{ app.value.domain | default(none) }}"
+    # Optional settings: see droplets.yml. Unset strings default to '', not
+    # none, since the droplets' Ansible (ansible-core 2.16) renders none as ''.
+    domain: "{{ app.value.domain | default('') }}"
     app_nginx_required: "{{ app.value.nginx | default(true) }}"
-    app_network: "{{ app.value.network | default(none) }}"
+    app_network: "{{ app.value.network | default('') }}"
     app_checks: "{{ app.value.checks | default(true) }}"
     app_docker_options: "{{ app.value.docker_options | default([]) }}"
     app_mounts: "{{ app.value.mounts | default([]) }}"
