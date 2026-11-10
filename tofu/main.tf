@@ -40,7 +40,7 @@ module "app" {
   name        = each.key
   region      = each.value.region
   volume_size = each.value.volume_size
-  domain      = each.value.domain
+  domain      = try(each.value.domain, null)
   droplet = {
     id           = module.droplet[each.value.droplet].id
     ipv4_address = module.droplet[each.value.droplet].ipv4_address

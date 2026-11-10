@@ -15,7 +15,7 @@ Changing a droplet's image or SSH keys only affects new droplets, rather than re
 
 Each app has a block storage volume attached to its droplet, for all its persistent data, so that the droplet itself can be replaced.
 OpenTofu refuses to destroy a volume: to really delete one, first remove `prevent_destroy` from the `app` module.
-Each app also has its own DNS zone in DigitalOcean, with A and AAAA records pointing at its droplet.
+Each app with a `domain` also has its own DNS zone in DigitalOcean, with A and AAAA records pointing at its droplet.
 Adding or removing an app doesn't change its droplet.
 
 At a droplet's first boot, cloud-init writes its settings and vault password to `/etc/web-app/`, installs Ansible, and runs `ansible-pull` against `main` of this repo, which configures the droplet (see [Server configuration](#server-configuration)).
@@ -33,7 +33,7 @@ You need:
 
 - a Spaces access key named `infra-demo-tofu-state-local`, with read/write access to the state bucket (see below), exported as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 - the state passphrase, from the password manager, exported as `TF_VAR_state_passphrase`
-- each app's zone delegated to DigitalOcean: opensafely.org's DNS is on Cloudflare, which needs NS records for the app's subdomain pointing to `ns1.digitalocean.com`, `ns2.digitalocean.com` and `ns3.digitalocean.com`
+- each app's zone (for apps with a `domain`) delegated to DigitalOcean: opensafely.org's DNS is on Cloudflare, which needs NS records for the app's subdomain pointing to `ns1.digitalocean.com`, `ns2.digitalocean.com` and `ns3.digitalocean.com`
 
 ```sh
 just tofu init  # once, to download the provider and connect to the state bucket

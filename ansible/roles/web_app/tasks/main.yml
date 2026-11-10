@@ -10,7 +10,8 @@
     label: "{{ app.key }}"
   vars:
     app_name: "{{ app.key }}"
-    domain: "{{ app.value.domain }}"
+    # Optional settings: see droplets.yml
+    domain: "{{ app.value.domain | default(none) }}"
     app_env: "{{ app.value.env | combine(app_secrets[app.key]) }}"
 
 - ansible.builtin.import_tasks: alerts.yml

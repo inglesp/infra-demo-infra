@@ -6,7 +6,7 @@
 #     size: s-1vcpu-1gb
 #     apps:
 #       <app>:                       # unique across all droplets
-#         domain: <app>.example.org  # gets its own DNS zone
+#         domain: <app>.example.org  # optional: gets its own DNS zone
 #         volume_size: 1             # GiB
 #         image: ghcr.io/<owner>/<image>
 #         image_tag: latest

@@ -14,8 +14,9 @@ variable "volume_size" {
 }
 
 variable "domain" {
-  description = "The DNS zone for the app, delegated to DigitalOcean; records go at its apex"
+  description = "The DNS zone for the app, delegated to DigitalOcean; records go at its apex. Null for no zone."
   type        = string
+  default     = null
 }
 
 variable "droplet" {

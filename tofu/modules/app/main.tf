@@ -28,20 +28,41 @@ resource "digitalocean_volume_attachment" "data" {
   volume_id  = digitalocean_volume.data.id
 }
 
+# An app without a domain (one only other apps on its droplet talk to) gets no
+# zone
 resource "digitalocean_domain" "this" {
-  name = var.domain
+  count = var.domain == null ? 0 : 1
+  name  = var.domain
 }
 
 resource "digitalocean_record" "a" {
-  domain = digitalocean_domain.this.id
+  count  = var.domain == null ? 0 : 1
+  domain = digitalocean_domain.this[0].id
   type   = "A"
   name   = "@"
   value  = var.droplet.ipv4_address
 }
 
 resource "digitalocean_record" "aaaa" {
-  domain = digitalocean_domain.this.id
+  count  = var.domain == null ? 0 : 1
+  domain = digitalocean_domain.this[0].id
   type   = "AAAA"
   name   = "@"
   value  = var.droplet.ipv6_address
+}
+
+# From when every app had a domain
+moved {
+  from = digitalocean_domain.this
+  to   = digitalocean_domain.this[0]
+}
+
+moved {
+  from = digitalocean_record.a
+  to   = digitalocean_record.a[0]
+}
+
+moved {
+  from = digitalocean_record.aaaa
+  to   = digitalocean_record.aaaa[0]
 }

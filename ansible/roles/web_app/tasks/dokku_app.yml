@@ -9,17 +9,22 @@
   ansible.builtin.command: dokku apps:create {{ app_name }}
   when: app_name not in dokku_apps.stdout_lines
 
-# If the app has only just been created, there's nothing to read, so the domain
-# is set regardless
-- name: Read the app's domains
-  ansible.builtin.command: dokku domains:report {{ app_name }} --domains-app-vhosts
-  register: dokku_app_domains
-  changed_when: false
-  when: app_name in dokku_apps.stdout_lines
-
+# An app without a domain is only reached by other apps on the droplet, or
+# through a port it publishes itself, so it keeps Dokku's default
 - name: Set the app's domain
-  ansible.builtin.command: dokku domains:set {{ app_name }} {{ domain }}
-  when: dokku_app_domains is skipped or dokku_app_domains.stdout.split() != [domain]
+  when: domain is not none
+  block:
+    # If the app has only just been created, there's nothing to read, so the
+    # domain is set regardless
+    - name: Read the app's domains
+      ansible.builtin.command: dokku domains:report {{ app_name }} --domains-app-vhosts
+      register: dokku_app_domains
+      changed_when: false
+      when: app_name in dokku_apps.stdout_lines
+
+    - name: Set the app's domain
+      ansible.builtin.command: dokku domains:set {{ app_name }} {{ domain }}
+      when: dokku_app_domains is skipped or dokku_app_domains.stdout.split() != [domain]
 
 - name: Read whether letsencrypt is active for the app
   ansible.builtin.command: dokku letsencrypt:report {{ app_name }} --letsencrypt-active
