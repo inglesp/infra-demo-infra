@@ -69,7 +69,9 @@ The playbook:
     - mounts the app's volume at `/srv/<app>/data`, owned by UID 10001, which every app's image must run as (and listen on port 8000), in place of DigitalOcean's own mount under `/mnt/`
     - creates the app in Dokku, and sets its domain, its environment (`env`, plus its secrets) and its ports
     - mounts the volume into the app's container at `/data`, where the app keeps its database
-    - applies the app's optional settings in `droplets.yml`: `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
+    - applies the app's optional settings in `droplets.yml`:
+        - `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
+        - `network` attaches the app to a Dokku network, creating it if needed, so that other apps on it can reach it as `<app>.web`
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.

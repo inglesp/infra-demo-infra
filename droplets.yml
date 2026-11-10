@@ -14,6 +14,7 @@
 #           SOME_SETTING: ...
 #         # Optional:
 #         nginx: false               # no nginx in front of the app, so no vhost, ports or TLS (default true)
+#         network: <network>         # reach other apps on the network as <app>.web
 droplets:
   demo-1:
     region: lon1

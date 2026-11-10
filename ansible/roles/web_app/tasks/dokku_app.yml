@@ -69,6 +69,31 @@
       ansible.builtin.command: dokku ports:set {{ app_name }} {{ app_ports | join(" ") }}
       when: dokku_app_ports is skipped or dokku_app_ports.stdout.split() != app_ports
 
+# Apps on the same network reach each other as <app>.web
+- name: Attach the app to its network
+  when: app_network is not none
+  block:
+    - name: Check whether the network exists
+      ansible.builtin.command: dokku network:exists {{ app_network }}
+      register: dokku_network_exists
+      changed_when: false
+      failed_when: false
+
+    - name: Create the network
+      ansible.builtin.command: dokku network:create {{ app_network }}
+      when: dokku_network_exists.rc != 0
+
+    - name: Read the app's network
+      ansible.builtin.command: dokku network:report {{ app_name }} --network-attach-post-create
+      register: dokku_app_network
+      changed_when: false
+      when: app_name in dokku_apps.stdout_lines
+
+    - name: Set the app's network
+      ansible.builtin.command: dokku network:set {{ app_name }} attach-post-create {{ app_network }}
+      register: dokku_app_network_set
+      when: dokku_app_network is skipped or dokku_app_network.stdout.split() != [app_network]
+
 - name: Read the app's storage mounts
   ansible.builtin.command: dokku --quiet storage:list {{ app_name }}
   register: dokku_app_storage
@@ -80,15 +105,16 @@
   register: dokku_app_storage_mount
   when: dokku_app_storage is skipped or app_storage_mount not in dokku_app_storage.stdout_lines
 
-# A change to the app's mounts or nginx only reaches the container when it
-# restarts. An app that hasn't been deployed can't be restarted, but gets them
+# A change to the app's mounts, nginx or network only reaches the container
+# when it restarts. An app that hasn't been deployed can't be restarted, but gets them
 # when it's first deployed.
 - name: Restart the app if its container's settings changed
   vars:
     app_needs_restart: >-
       {{ dokku_app_storage_mount is changed
          or dokku_app_nginx_disable is changed
-         or dokku_app_nginx_enable is changed }}
+         or dokku_app_nginx_enable is changed
+         or dokku_app_network_set is changed }}
   block:
     - name: Check whether the app has been deployed
       ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
