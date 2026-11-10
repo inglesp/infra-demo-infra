@@ -74,6 +74,7 @@ The playbook:
         - `network` attaches the app to a Dokku network, creating it if needed, so that other apps on it can reach it as `<app>.web`
         - `checks: false` turns off Dokku's zero-downtime deploys, so the old container stops before the new one starts, which an app that publishes a port on the host needs
         - `docker_options` adds options to the app's `docker run`, such as `-p 6514:6514` to publish a port on the host
+        - `mounts` mounts extra host paths into the app's container, read-only, as `<host path>:<container path>`
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.

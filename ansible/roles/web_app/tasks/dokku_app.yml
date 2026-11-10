@@ -132,10 +132,15 @@
   changed_when: false
   when: app_name in dokku_apps.stdout_lines
 
-- name: Mount the volume into the app's container
-  ansible.builtin.command: dokku storage:mount {{ app_name }} {{ app_storage_mount }}
+# Mount the app's volume read-write, and any extra host paths in its `mounts`
+# in droplets.yml read-only. Removing a path from `mounts` doesn't unmount it:
+# run `dokku storage:unmount <app> <host path>:<container path>:ro` on the
+# droplet.
+- name: Mount the volume, and any other host paths, into the app's container
+  ansible.builtin.command: dokku storage:mount {{ app_name }} {{ item }}
+  loop: "{{ [app_storage_mount] + (app_mounts | map('regex_replace', '$', ':ro') | list) }}"
   register: dokku_app_storage_mount
-  when: dokku_app_storage is skipped or app_storage_mount not in dokku_app_storage.stdout_lines
+  when: dokku_app_storage is skipped or item not in dokku_app_storage.stdout_lines
 
 # A change to the app's mounts, nginx, network or docker options only reaches
 # the container when it restarts. An app that hasn't been deployed can't be restarted, but gets them
