@@ -20,8 +20,42 @@ check:
     just tofu validate
     cd ansible && uv run ansible-playbook --syntax-check -i localhost, playbook.yml
 
-# Create a new droplet's vault password, before the droplet itself (see the README's "Add a droplet")
-set-vault-password droplet: (tofu "apply" '-target=module.droplet["' + droplet + '"].random_password.vault_password')
+# Create a new droplet's vault password and logging client cert, before the droplet itself (see the README's "Add a droplet")
+set-vault-password droplet: (tofu "apply" '-target=module.droplet["' + droplet + '"].random_password.vault_password' '-target=tls_locally_signed_cert.log_client["' + droplet + '"]')
+
+# Write each droplet's logging TLS files to host_vars/<droplet>/log_tls.yml, encrypted with its vault password
+sync-log-tls:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The keys and passwords are secrets. mktemp makes the directory readable
+    # only by you, and it's deleted on exit.
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    # Read from the state with console, rather than from outputs, since a new
+    # droplet's cert is created with a targeted apply, which doesn't update
+    # outputs. console prints each as a quoted string of JSON.
+    echo 'nonsensitive(jsonencode(local.log_tls))' \
+        | just tofu console | jq -r . > "$tmp/tls.json"
+    echo 'nonsensitive(jsonencode({ for name, d in module.droplet : name => d.vault_password }))' \
+        | just tofu console | jq -r . > "$tmp/passwords.json"
+    cd ansible
+    for droplet in $(jq -r 'keys[]' "$tmp/tls.json"); do
+        f=host_vars/$droplet/log_tls.yml
+        mkdir -p "$(dirname "$f")"
+        jq -r --arg d "$droplet" '.[$d]' "$tmp/passwords.json" > "$tmp/password"
+        # JSON is valid YAML
+        jq --arg d "$droplet" '.[$d]' "$tmp/tls.json" > "$tmp/new.yml"
+        # Only rewrite a file when its contents change, since encrypting it
+        # again would change it anyway
+        if [ -e "$f" ] && uv run ansible-vault view --vault-id "$droplet@$tmp/password" "$f" \
+            | cmp -s - "$tmp/new.yml"; then
+            continue
+        fi
+        uv run ansible-vault encrypt \
+            --vault-id "$droplet@$tmp/password" --encrypt-vault-id "$droplet" \
+            --output "$f" "$tmp/new.yml"
+        echo "Updated $f"
+    done
 
 # Edit a droplet's secrets, in host_vars/<droplet>/vault.yml, creating the file if needed
 vault-edit droplet:

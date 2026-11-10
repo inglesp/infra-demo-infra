@@ -50,7 +50,7 @@ Its actions are pinned to commit SHAs.
 OpenTofu's state is kept in the `inglesp-infra-demo-tofu-state` Spaces bucket, in `lon1`, as `infra-demo-infra.tfstate`.
 The bucket was created by hand, since it can't hold its own state.
 The state is encrypted with the state passphrase: if the passphrase is lost, so is the state.
-The state holds secrets: each droplet's vault password, which OpenTofu generates and puts in the droplet's `user_data`.
+The state holds secrets: each droplet's vault password, which OpenTofu generates and puts in the droplet's `user_data`, and the logging CA's and certs' private keys.
 State is locked while OpenTofu uses it, with a lock file next to it in the bucket, so two runs can't change it at once.
 
 ## Server configuration
@@ -107,6 +107,11 @@ app_secrets:
 
 Removing a variable from `env` or the vault doesn't remove it from the app: run `dokku config:unset <app> <variable>` on the droplet.
 
+Each droplet also has logging certs, for sending its logs to a log server over mutual TLS: the logging CA's cert, and the droplet's own client cert and key, with the droplet's name as its common name.
+OpenTofu makes them (in `tofu/logging.tf`), and `just sync-log-tls` writes each droplet's to `ansible/host_vars/<droplet>/log_tls.yml`, encrypted with its vault password, rather than them being edited by hand.
+It only rewrites a file when its certs have changed.
+The client certs last a year, and `just apply` replaces them in their last 30 days: then run `just sync-log-tls`, and commit and push.
+
 ### Deploys
 
 Each app's `image` and `image_tag` are set in `droplets.yml`, and Ansible writes the droplet's apps to `/etc/web-app/apps.json`.
@@ -137,14 +142,15 @@ ssh root@$(just tofu output -json ips | jq -r '.["<droplet>"]')
 
 ### Add a droplet
 
-The droplet's first run needs its vault, which needs its password, so the password is created first:
+The droplet's first run needs its vault and its logging certs, which need its password, so those are created first:
 
 1. Add the droplet and its apps to `droplets.yml`, and delegate each app's zone (see [Infrastructure](#infrastructure)).
-2. Create the droplet's vault password, with `just set-vault-password <droplet>`.
-   This applies only the password, so OpenTofu warns that the changes may be incomplete: the `just apply` in step 5 makes the rest.
+2. Create the droplet's vault password and logging cert, with `just set-vault-password <droplet>`.
+   This applies only those, so OpenTofu warns that the changes may be incomplete: the `just apply` in step 6 makes the rest.
 3. Add `alert_webhook_url` and each app's `app_secrets` (see [Secrets](#secrets)) with `just vault-edit <droplet>`.
-4. Commit and push.
-5. Create the droplet and its apps' resources with `just apply`.
+4. Write the droplet's logging certs with `just sync-log-tls`.
+5. Commit and push.
+6. Create the droplet and its apps' resources with `just apply`.
 
 The droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys its apps and enables TLS.
 `cloud-init status --wait` on the droplet waits for the first boot to finish.
