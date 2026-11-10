@@ -14,6 +14,7 @@
 #           SOME_SETTING: ...
 #         # Optional:
 #         nginx: false               # no nginx in front of the app, so no vhost, ports or TLS (default true)
+#         nginx_log_format: bytes_json  # nginx access log format, defined in the web_app role's files/ (default Dokku's)
 #         network: <network>         # reach other apps on the network as <app>.web
 #         checks: false              # stop the old container before starting the new one (default true)
 #         docker_options:            # extra `docker run` options, e.g. to publish a port on the host
@@ -30,6 +31,9 @@ droplets:
         volume_size: 2
         image: ghcr.io/inglesp/infra-demo-app
         image_tag: latest
+        # A stand-in for the app whose traffic is managed: its access log
+        # has no client IPs or URLs
+        nginx_log_format: bytes_json
         env:
           DJANGO_ALLOWED_HOSTS: alpha-infra-demo.opensafely.org
           DEMO_NON_SECRET: alpha not a secret

@@ -71,10 +71,12 @@ The playbook:
     - mounts the volume into the app's container at `/data`, where the app keeps its database
     - applies the app's optional settings in `droplets.yml`:
         - `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
+        - `nginx_log_format` sets the app's nginx access log format. `bytes_json` is a line of JSON per request, with the vhost, status, method, bytes and time, but no client IPs, URLs or query strings. Without it, the app uses Dokku's default.
         - `network` attaches the app to a Dokku network, creating it if needed, so that other apps on it can reach it as `<app>.web`
         - `checks: false` turns off Dokku's zero-downtime deploys, so the old container stops before the new one starts, which an app that publishes a port on the host needs
         - `docker_options` adds options to the app's `docker run`, such as `-p 6514:6514` to publish a port on the host
         - `mounts` mounts extra host paths into the app's container, read-only, as `<host path>:<container path>`
+- defines nginx access log formats, which an app can choose with `nginx_log_format` (see above)
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.

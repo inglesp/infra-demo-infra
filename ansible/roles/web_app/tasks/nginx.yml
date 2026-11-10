@@ -1,0 +1,17 @@
+# nginx access log formats, which an app can choose with `nginx_log_format` in
+# droplets.yml (see dokku_app.yml). Defining a format changes nothing until an
+# app's vhost uses it, so they're defined on every droplet, before the apps.
+- name: Define nginx's access log formats
+  ansible.builtin.copy:
+    src: 00-log-formats.conf
+    dest: /etc/nginx/conf.d/00-log-formats.conf
+    mode: "0644"
+  register: nginx_log_formats
+  notify: Reload nginx
+
+# The snippet can't be checked on its own, so check the whole config. If it
+# fails, the play stops before anything reloads nginx.
+- name: Check nginx's config
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  when: nginx_log_formats is changed

@@ -2,6 +2,11 @@
   ansible.builtin.systemd_service:
     daemon_reload: true
 
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+
 # Dokku's install docs run this after installing or upgrading the package
 - name: Install Dokku's plugin dependencies
   ansible.builtin.command: dokku plugin:install-dependencies --core

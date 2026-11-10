@@ -69,6 +69,49 @@
       ansible.builtin.command: dokku ports:set {{ app_name }} {{ app_ports | join(" ") }}
       when: dokku_app_ports is skipped or dokku_app_ports.stdout.split() != app_ports
 
+# The format is one of those defined in nginx.yml. Without `nginx_log_format`,
+# the app uses Dokku's default, which logs client IPs and URLs.
+- name: Set the app's nginx access log format
+  when: app_nginx_required
+  block:
+    - name: Read the app's nginx access log format
+      ansible.builtin.command: dokku nginx:report {{ app_name }} --nginx-access-log-format
+      register: dokku_app_nginx_log_format
+      changed_when: false
+      when: app_name in dokku_apps.stdout_lines
+
+    - name: Set the app's nginx access log format
+      ansible.builtin.command: dokku nginx:set {{ app_name }} access-log-format {{ app_nginx_log_format }}
+      register: dokku_app_nginx_log_format_set
+      when: >-
+        app_nginx_log_format | length > 0
+        and (dokku_app_nginx_log_format is skipped
+             or dokku_app_nginx_log_format.stdout != app_nginx_log_format)
+
+    # With no value, nginx:set unsets the format, so the app goes back to
+    # Dokku's default
+    - name: Unset the app's nginx access log format
+      ansible.builtin.command: dokku nginx:set {{ app_name }} access-log-format
+      register: dokku_app_nginx_log_format_unset
+      when: >-
+        app_nginx_log_format | length == 0
+        and dokku_app_nginx_log_format is not skipped
+        and dokku_app_nginx_log_format.stdout | length > 0
+
+    # The app's nginx config is otherwise only rebuilt when it's deployed. An
+    # app that hasn't been deployed gets the format when it's first deployed.
+    - name: Check whether the app has been deployed, to rebuild its nginx config
+      ansible.builtin.command: dokku ps:report {{ app_name }} --deployed
+      register: dokku_app_deployed_for_nginx
+      changed_when: false
+      when: dokku_app_nginx_log_format_set is changed or dokku_app_nginx_log_format_unset is changed
+
+    - name: Rebuild the app's nginx config
+      ansible.builtin.command: dokku proxy:build-config {{ app_name }}
+      when: >-
+        (dokku_app_nginx_log_format_set is changed or dokku_app_nginx_log_format_unset is changed)
+        and dokku_app_deployed_for_nginx.stdout == "true"
+
 # Apps on the same network reach each other as <app>.web
 - name: Attach the app to its network
   when: app_network | length > 0

@@ -1,5 +1,6 @@
 - ansible.builtin.import_tasks: host.yml
 - ansible.builtin.import_tasks: dokku.yml
+- ansible.builtin.import_tasks: nginx.yml
 
 # include_tasks, since imports can't loop
 - name: Configure each app
@@ -14,6 +15,7 @@
     # none, since the droplets' Ansible (ansible-core 2.16) renders none as ''.
     domain: "{{ app.value.domain | default('') }}"
     app_nginx_required: "{{ app.value.nginx | default(true) }}"
+    app_nginx_log_format: "{{ app.value.nginx_log_format | default('') }}"
     app_network: "{{ app.value.network | default('') }}"
     app_checks: "{{ app.value.checks | default(true) }}"
     app_docker_options: "{{ app.value.docker_options | default([]) }}"
