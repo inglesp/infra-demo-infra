@@ -80,6 +80,7 @@ The playbook:
 - defines nginx access log formats, which an app can choose with `nginx_log_format` (see above)
 - on the log server, before the apps, writes Alloy's TLS files to `/etc/web-app/log-tls/`, which `droplets.yml` mounts into Alloy's container, and restarts Alloy when they change (see [Logging](#logging))
 - installs the deploy service and the alerts (see below)
+- forwards the droplet's logs to the log server with rsyslog (see [Logging](#logging))
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.
 
@@ -113,7 +114,7 @@ Each droplet also has logging certs, for sending its logs to the log server over
 The log server also has Alloy's server cert and key, for `logs-ingest-infra-demo.opensafely.org`.
 OpenTofu makes them (in `tofu/logging.tf`), and `just sync-log-tls` writes each droplet's to `ansible/host_vars/<droplet>/log_tls.yml`, encrypted with its vault password, rather than them being edited by hand.
 It only rewrites a file when its certs have changed.
-The client certs last a year, and `just apply` replaces them in their last 30 days: then run `just sync-log-tls`, and commit and push.
+The certs last a year, and `just apply` replaces them in their last 30 days: see [Rotate the logging certs](#rotate-the-logging-certs).
 
 ### Deploys
 
@@ -144,6 +145,18 @@ Loki has no domain or nginx, so it can only be reached on the network.
 Alloy receives syslog at `logs-ingest-infra-demo.opensafely.org:6514`, over TLS, and stores it in Loki.
 It publishes the port on the host itself, rather than through nginx, so it has no vhost, and Dokku's zero-downtime deploys are off for it, since two containers can't both publish the port.
 Only droplets can reach the port, and Alloy only accepts senders with a client cert signed by the logging CA (see [Secrets](#secrets)).
+
+Every droplet, the log server included, forwards its logs with rsyslog to Alloy, and checks that Alloy's cert is signed by the logging CA and is for `logs-ingest-infra-demo.opensafely.org`.
+It forwards:
+
+- everything rsyslog gets from the journal, so systemd's and the deploy service's logs, and deploy events, which Alloy labels with their `app` and `result`
+- the nginx access logs of apps with `nginx_log_format`, tagged `nginx-access`, which Alloy labels with their `vhost`.
+  Other apps' access logs have client IPs and URLs, so they aren't forwarded.
+
+Alloy labels every line with the sender's `host` (its droplet name) and `source_ip`.
+While the log server is unreachable, rsyslog queues messages on disk, up to 1 GB, and sends them when it's back.
+Loki keeps logs for 30 days.
+In Grafana, find them in Explore, e.g. `{host="demo-1"}` or `{app_name="deploy-event"}`.
 
 ## Runbook
 
@@ -197,6 +210,21 @@ The DNS records can take up to 30 minutes to point at the new IP address everywh
 Set the app's `image_tag` in `droplets.yml` to `sha-<commit>`, where `<commit>` is the full SHA of a commit on the app repo's `main`, and push the change.
 Within a minute or so, the droplet applies and deploys it.
 Set it back to `latest`, and push that, to return to deploying each new build.
+
+### Rotate the logging certs
+
+The client certs and Alloy's server cert last a year, and `just apply` replaces them in their last 30 days.
+To replace one sooner, taint it, e.g. `just tofu taint 'tls_locally_signed_cert.log_client["demo-1"]'` or `just tofu taint tls_locally_signed_cert.log_server`.
+Then:
+
+1. Make the new certs with `just apply`.
+2. Write them with `just sync-log-tls`.
+3. Commit and push.
+
+Each droplet restarts rsyslog when its certs change, and the log server also restarts Alloy.
+If a cert expires first, that droplet's rsyslog queues its logs on disk until it has a new one.
+
+The CA lasts five years. Replacing it (`just tofu taint tls_self_signed_cert.log_ca`) replaces every cert signed by it, so follow the same steps: until every droplet has the new CA, the ones that don't can't send logs.
 
 ### Remove a stale state lock
 

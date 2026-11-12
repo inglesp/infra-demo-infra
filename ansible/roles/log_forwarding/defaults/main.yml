@@ -1,0 +1,9 @@
+# Alloy's syslog listener on the log server (see tofu/logging.tf)
+log_ingest_host: logs-ingest-infra-demo.opensafely.org
+log_ingest_port: 6514
+
+# The droplet's client cert, key and the CA, from host_vars/<droplet>/log_tls.yml
+log_tls_dir: /etc/rsyslog.d/tls
+
+# How much rsyslog queues on disk while the log server is unreachable
+log_queue_max_disk_space: 1g

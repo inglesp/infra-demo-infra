@@ -1,0 +1,55 @@
+# {{ ansible_managed }}
+#
+# Forward every message to Alloy on the log server, over mutual TLS, framed
+# as RFC 5425 (RFC 5424 messages, octet-counted), which is what Alloy's
+# listener expects. Messages are queued on disk while the log server is
+# unreachable.
+
+module(load="imfile")
+
+ruleset(name="forward") {
+    action(
+        type="omfwd"
+        target="{{ log_ingest_host }}"
+        port="{{ log_ingest_port }}"
+        protocol="tcp"
+        TCP_Framing="octet-counted"
+        template="RSYSLOG_SyslogProtocol23Format"
+
+        StreamDriver="gtls"
+        StreamDriverMode="1"
+        StreamDriverAuthMode="x509/name"
+        StreamDriverPermittedPeers="{{ log_ingest_host }}"
+        StreamDriver.CAFile="{{ log_tls_dir }}/ca.crt"
+        StreamDriver.CertFile="{{ log_tls_dir }}/client.crt"
+        StreamDriver.KeyFile="{{ log_tls_dir }}/client.key"
+
+        queue.type="LinkedList"
+        queue.filename="forward"
+        queue.maxDiskSpace="{{ log_queue_max_disk_space }}"
+        queue.saveOnShutdown="on"
+        action.resumeRetryCount="-1"
+    )
+}
+
+# The nginx access logs of the apps that set `nginx_log_format` in
+# droplets.yml, which leaves out client details. Other apps' access logs are
+# in Dokku's default format, with client IPs and URLs, so they aren't
+# forwarded. These go straight to the forward ruleset, so they aren't also
+# written to /var/log/syslog. imfile follows rotation. They're all tagged
+# nginx-access, which Alloy parses as bytes_json and labels with the vhost,
+# which tells the apps apart.
+{% for name, app in apps.items() if app.nginx_log_format is defined %}
+input(
+    type="imfile"
+    File="/var/log/nginx/{{ name }}-access.log"
+    Tag="nginx-access"
+    Severity="info"
+    Facility="local0"
+    ruleset="forward"
+)
+{% endfor %}
+
+# Everything else rsyslog receives, after the default rules have written it
+# to /var/log
+call forward

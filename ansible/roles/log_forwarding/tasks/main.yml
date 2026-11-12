@@ -1,0 +1,49 @@
+# Forward the droplet's logs to the log server over mutual TLS. Ubuntu's
+# rsyslog already reads the journal (through imuxsock), so systemd's and the
+# deploy service's logs, and deploy events (`logger -t deploy-event`), are
+# forwarded with no extra config. nginx's access logs are tailed from their
+# files.
+- name: Install rsyslog's TLS support
+  ansible.builtin.apt:
+    name: rsyslog-gnutls
+
+# rsyslog drops its privileges to the syslog user, and only loads the certs
+# when it connects, so they're readable by syslog
+- name: Create rsyslog's TLS directory
+  ansible.builtin.file:
+    path: "{{ log_tls_dir }}"
+    state: directory
+    owner: syslog
+    group: syslog
+    mode: "0700"
+
+- name: Write rsyslog's TLS files
+  ansible.builtin.copy:
+    dest: "{{ log_tls_dir }}/{{ item.name }}"
+    content: "{{ item.content }}"
+    owner: syslog
+    group: syslog
+    mode: "0600"
+  loop:
+    - { name: ca.crt, content: "{{ log_tls_ca }}" }
+    - { name: client.crt, content: "{{ log_tls_cert }}" }
+    - { name: client.key, content: "{{ log_tls_key }}" }
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  notify: Restart rsyslog
+
+- name: Configure forwarding
+  ansible.builtin.template:
+    src: 90-forward.conf.j2
+    dest: /etc/rsyslog.d/90-forward.conf
+    mode: "0644"
+  register: rsyslog_forward_conf
+  notify: Restart rsyslog
+
+# The snippet depends on the main config, so check the whole config. If it
+# fails, the play stops before the handler restarts rsyslog.
+- name: Check rsyslog's config
+  ansible.builtin.command: rsyslogd -N1
+  changed_when: false
+  when: rsyslog_forward_conf is changed

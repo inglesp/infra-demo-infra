@@ -7,3 +7,4 @@
     log_server: "{{ droplets[inventory_hostname].log_server | default(false) }}"
   roles:
     - web_app
+    - log_forwarding
