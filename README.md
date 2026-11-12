@@ -11,6 +11,7 @@ Apps run on DigitalOcean droplets, managed with [OpenTofu](https://opentofu.org/
 OpenTofu creates each droplet with the `droplet` module, and each app's resources with the `app` module.
 
 Each droplet has a cloud firewall that allows inbound SSH, HTTP, HTTPS and ICMP, and all outbound traffic.
+The log server (see [Logging](#logging)) has a second firewall, which lets every droplet reach port 6514.
 Changing a droplet's image or SSH keys only affects new droplets, rather than replacing existing ones.
 
 Each app has a block storage volume attached to its droplet, for all its persistent data, so that the droplet itself can be replaced.
@@ -77,6 +78,7 @@ The playbook:
         - `docker_options` adds options to the app's `docker run`, such as `-p 6514:6514` to publish a port on the host
         - `mounts` mounts extra host paths into the app's container, read-only, as `<host path>:<container path>`
 - defines nginx access log formats, which an app can choose with `nginx_log_format` (see above)
+- on the log server, before the apps, writes Alloy's TLS files to `/etc/web-app/log-tls/`, which `droplets.yml` mounts into Alloy's container, and restarts Alloy when they change (see [Logging](#logging))
 - installs the deploy service and the alerts (see below)
 
 The letsencrypt plugin is pinned to a commit, `letsencrypt_plugin_commit` in the role's defaults, and changing that updates it.
@@ -107,7 +109,8 @@ app_secrets:
 
 Removing a variable from `env` or the vault doesn't remove it from the app: run `dokku config:unset <app> <variable>` on the droplet.
 
-Each droplet also has logging certs, for sending its logs to a log server over mutual TLS: the logging CA's cert, and the droplet's own client cert and key, with the droplet's name as its common name.
+Each droplet also has logging certs, for sending its logs to the log server over mutual TLS: the logging CA's cert, and the droplet's own client cert and key, with the droplet's name as its common name.
+The log server also has Alloy's server cert and key, for `logs-ingest-infra-demo.opensafely.org`.
 OpenTofu makes them (in `tofu/logging.tf`), and `just sync-log-tls` writes each droplet's to `ansible/host_vars/<droplet>/log_tls.yml`, encrypted with its vault password, rather than them being edited by hand.
 It only rewrites a file when its certs have changed.
 The client certs last a year, and `just apply` replaces them in their last 30 days: then run `just sync-log-tls`, and commit and push.
@@ -132,6 +135,16 @@ The droplet posts through an [incoming webhook](https://api.slack.com/messaging/
 The webhook's URL is a secret, set as `alert_webhook_url` in the droplet's vault.
 To send a test alert, run `systemctl start notify-failure@deploy.service` on the droplet. The next successful run then posts that it has recovered.
 
+### Logging
+
+The `logs` droplet (the one with `log_server: true` in `droplets.yml`) runs Alloy, Loki and Grafana, which reach each other on the `observability` Dokku network.
+Grafana is at https://logs-infra-demo.opensafely.org, and its admin password is `GF_SECURITY_ADMIN_PASSWORD` in the droplet's vault.
+Loki has no domain or nginx, so it can only be reached on the network.
+
+Alloy receives syslog at `logs-ingest-infra-demo.opensafely.org:6514`, over TLS, and stores it in Loki.
+It publishes the port on the host itself, rather than through nginx, so it has no vhost, and Dokku's zero-downtime deploys are off for it, since two containers can't both publish the port.
+Only droplets can reach the port, and Alloy only accepts senders with a client cert signed by the logging CA (see [Secrets](#secrets)).
+
 ## Runbook
 
 ### SSH into a droplet
@@ -151,6 +164,7 @@ The droplet's first run needs its vault and its logging certs, which need its pa
 4. Write the droplet's logging certs with `just sync-log-tls`.
 5. Commit and push.
 6. Create the droplet and its apps' resources with `just apply`.
+   This also lets the new droplet through the log server's firewall.
 
 The droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys its apps and enables TLS.
 `cloud-init status --wait` on the droplet waits for the first boot to finish.

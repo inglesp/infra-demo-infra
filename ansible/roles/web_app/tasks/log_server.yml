@@ -1,0 +1,42 @@
+# Alloy's TLS files, from host_vars/<droplet>/log_tls.yml (see `just
+# sync-log-tls`), mounted read-only into its container (see droplets.yml).
+# Written before the apps are configured, so that they exist when Alloy's
+# container first mounts them: otherwise Docker creates the directory, empty
+# and owned by root.
+- name: Create Alloy's TLS directory
+  ansible.builtin.file:
+    path: "{{ log_server_tls_dir }}"
+    state: directory
+    owner: "{{ app_uid }}"
+    group: "{{ app_uid }}"
+    mode: "0700"
+
+- name: Write Alloy's TLS files
+  ansible.builtin.copy:
+    dest: "{{ log_server_tls_dir }}/{{ item.name }}"
+    content: "{{ item.content }}"
+    owner: "{{ app_uid }}"
+    group: "{{ app_uid }}"
+    mode: "0600"
+  loop:
+    - { name: ca.crt, content: "{{ log_tls_ca }}" }
+    - { name: server.crt, content: "{{ log_server_tls_cert }}" }
+    - { name: server.key, content: "{{ log_server_tls_key }}" }
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  register: alloy_tls
+
+# Alloy reads its certs at startup. It can't be restarted before it's been
+# deployed, but reads them when it's first deployed. On a new droplet the app
+# doesn't exist yet, so ps:report fails, which counts as not deployed.
+- name: Check whether Alloy has been deployed
+  ansible.builtin.command: dokku ps:report {{ log_ingest_app }} --deployed
+  register: alloy_deployed
+  changed_when: false
+  failed_when: false
+  when: alloy_tls is changed
+
+- name: Restart Alloy
+  ansible.builtin.command: dokku ps:restart {{ log_ingest_app }}
+  when: alloy_tls is changed and alloy_deployed.stdout == "true"

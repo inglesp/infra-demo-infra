@@ -4,5 +4,6 @@
     - ../droplets.yml
   vars:
     apps: "{{ droplets[inventory_hostname].apps }}"
+    log_server: "{{ droplets[inventory_hostname].log_server | default(false) }}"
   roles:
     - web_app

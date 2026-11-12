@@ -9,6 +9,11 @@ letsencrypt_email: peter.inglesby@thedatalab.org
 app_port: 8000
 app_uid: 10001
 
+# On the log server: where Alloy's TLS files are written, which droplets.yml
+# mounts into Alloy's container, and the app to restart when they change
+log_server_tls_dir: /etc/web-app/log-tls
+log_ingest_app: alloy
+
 # The rest are per app, templated with the app_name of the app being
 # configured
 

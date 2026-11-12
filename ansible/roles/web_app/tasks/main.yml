@@ -2,6 +2,11 @@
 - ansible.builtin.import_tasks: dokku.yml
 - ansible.builtin.import_tasks: nginx.yml
 
+# Before the apps, since Alloy mounts the files it writes
+- name: Configure the log server
+  ansible.builtin.import_tasks: log_server.yml
+  when: log_server | bool
+
 # include_tasks, since imports can't loop
 - name: Configure each app
   ansible.builtin.include_tasks: app.yml

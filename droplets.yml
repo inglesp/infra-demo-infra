@@ -4,6 +4,7 @@
 #   <droplet>:
 #     region: lon1
 #     size: s-1vcpu-1gb
+#     log_server: true               # optional: the droplet the others send their logs to
 #     apps:
 #       <app>:                       # unique across all droplets
 #         domain: <app>.example.org  # optional: gets its own DNS zone
@@ -57,3 +58,43 @@ droplets:
         env:
           DJANGO_ALLOWED_HOSTS: gamma-infra-demo.opensafely.org
           DEMO_NON_SECRET: gamma not a secret
+  # Central logging: every droplet will forward its logs to Alloy, which
+  # stores them in Loki, which Grafana queries. The apps are in that order.
+  logs:
+    region: lon1
+    size: s-2vcpu-4gb
+    log_server: true
+    apps:
+      alloy:
+        # For senders only: Alloy has no vhost
+        domain: logs-ingest-infra-demo.opensafely.org
+        volume_size: 5
+        image: ghcr.io/inglesp/observability-alloy
+        image_tag: latest
+        nginx: false
+        network: observability
+        # Two containers can't both publish port 6514
+        checks: false
+        docker_options:
+          - "-p 6514:6514"
+        # Alloy's TLS files (see the web_app role's log_server.yml)
+        mounts:
+          - /etc/web-app/log-tls:/etc/alloy/tls
+        env: {}
+      loki:
+        volume_size: 50
+        image: ghcr.io/inglesp/observability-loki
+        image_tag: latest
+        nginx: false
+        network: observability
+        env: {}
+      grafana:
+        domain: logs-infra-demo.opensafely.org
+        volume_size: 5
+        image: ghcr.io/inglesp/observability-grafana
+        image_tag: latest
+        network: observability
+        env:
+          GF_SERVER_ROOT_URL: https://logs-infra-demo.opensafely.org/
+          # For the image's Loki data source: Loki's alias on the network
+          LOKI_URL: http://loki.web:8000
