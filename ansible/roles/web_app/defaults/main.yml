@@ -29,3 +29,10 @@ data_dir: /srv/{{ app_name }}/data
 # The volume, mounted into the container where the image keeps its data
 # (DATABASE_PATH in infra-demo-app's Dockerfile)
 app_storage_mount: "{{ data_dir }}:/data"
+
+# Send the app's stdout and stderr to the journal, tagged with the app's name,
+# rather than to Docker's own log files, so that rsyslog forwards them to the
+# log server (see the log_forwarding role). `dokku logs` still works.
+app_log_docker_options:
+  - --log-driver=journald
+  - --log-opt=tag={{ app_name }}

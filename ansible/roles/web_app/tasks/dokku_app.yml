@@ -154,18 +154,19 @@
   ansible.builtin.command: dokku checks:enable {{ app_name }}
   when: app_checks and dokku_app_checks is not skipped and dokku_app_checks.stdout == "_all_"
 
-# Removing an option from droplets.yml doesn't remove it from the app: run
-# `dokku docker-options:remove <app> deploy "<option>"` on the droplet
+# Every app's log options (see app_log_docker_options in defaults), then its
+# own from droplets.yml. Removing an option doesn't remove it from the app:
+# run `dokku docker-options:remove <app> deploy "<option>"` on the droplet
 - name: Read the app's docker options
   ansible.builtin.command: dokku docker-options:report {{ app_name }} --docker-options-deploy
   register: dokku_app_docker_options
   changed_when: false
-  when: app_name in dokku_apps.stdout_lines and app_docker_options | length > 0
+  when: app_name in dokku_apps.stdout_lines
 
 - name: Add the app's docker options
   ansible.builtin.command:
     argv: [dokku, docker-options:add, "{{ app_name }}", deploy, "{{ item }}"]
-  loop: "{{ app_docker_options }}"
+  loop: "{{ app_log_docker_options + app_docker_options }}"
   register: dokku_app_docker_options_add
   when: dokku_app_docker_options is skipped or item not in dokku_app_docker_options.stdout
 

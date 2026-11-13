@@ -70,6 +70,7 @@ The playbook:
     - mounts the app's volume at `/srv/<app>/data`, owned by UID 10001, which every app's image must run as (and listen on port 8000), in place of DigitalOcean's own mount under `/mnt/`
     - creates the app in Dokku, and sets its domain, its environment (`env`, plus its secrets) and its ports
     - mounts the volume into the app's container at `/data`, where the app keeps its database
+    - sends the app's stdout and stderr to the journal, with Docker's journald log driver, so that they're forwarded to the log server (see [Logging](#logging)), and `dokku logs <app>` still shows them
     - applies the app's optional settings in `droplets.yml`:
         - `nginx: false` stops Dokku putting nginx in front of the app, so it has no vhost, ports or TLS
         - `nginx_log_format` sets the app's nginx access log format. `bytes_json` is a line of JSON per request, with the vhost, status, method, bytes and time, but no client IPs, URLs or query strings. Without it, the app uses Dokku's default.
@@ -150,6 +151,7 @@ Every droplet, the log server included, forwards its logs with rsyslog to Alloy,
 It forwards:
 
 - everything rsyslog gets from the journal, so systemd's and the deploy service's logs, and deploy events, which Alloy labels with their `app` and `result`
+- every app's stdout and stderr, which Docker sends to the journal, tagged with the app's name, so they're `{app_name="<app>"}`
 - the nginx access logs of apps with `nginx_log_format`, tagged `nginx-access`, which Alloy labels with their `vhost`.
   Other apps' access logs have client IPs and URLs, so they aren't forwarded.
 
