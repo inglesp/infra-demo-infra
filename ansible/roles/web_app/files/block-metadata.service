@@ -1,5 +1,5 @@
-# DigitalOcean's metadata service serves the droplet's user_data, which holds
-# secrets, to anything on the droplet that asks. This stops containers asking.
+# GCE's metadata server serves the droplet's user-data, which holds secrets,
+# to anything on the droplet that asks. This stops containers asking.
 #
 # DOCKER-USER only sees traffic forwarded from containers, so the host can
 # still reach the metadata service. Being wanted by and bound to Docker, this

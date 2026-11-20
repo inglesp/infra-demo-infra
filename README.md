@@ -6,34 +6,40 @@ Most of the original development was done in the [infra-demo](https://github.com
 
 ## Infrastructure
 
-Apps run on DigitalOcean droplets, managed with [OpenTofu](https://opentofu.org/) in `tofu/`.
+> This `gcp` branch runs the apps on Google Cloud instead of DigitalOcean, to show that it can be done.
+> The servers are still called droplets, and are listed in `droplets.yml`.
+> They configure themselves from this branch, not `main`.
+
+Apps run on Google Compute Engine (GCE) instances ("droplets"), in the project in `local.project`, managed with [OpenTofu](https://opentofu.org/) in `tofu/`.
 `droplets.yml` lists the droplets, and the apps each one runs.
 OpenTofu creates each droplet with the `droplet` module, and each app's resources with the `app` module.
 
-Each droplet has a cloud firewall that allows inbound SSH, HTTP, HTTPS and ICMP, and all outbound traffic.
-Changing a droplet's image or SSH keys only affects new droplets, rather than replacing existing ones.
+The droplets share a VPC network, whose firewall allows inbound SSH, HTTP, HTTPS and ICMP; GCP allows all outbound traffic.
+Each droplet has a static IPv4 address, which it keeps when it's replaced. There's no IPv6.
+Each droplet has no service account, so it has no GCP credentials.
+Changing a droplet's image only affects new droplets, rather than replacing existing ones.
 
-Each app has a block storage volume attached to its droplet, for all its persistent data, so that the droplet itself can be replaced.
-OpenTofu refuses to destroy a volume: to really delete one, first remove `prevent_destroy` from the `app` module.
-Each app also has its own DNS zone in DigitalOcean, with A and AAAA records pointing at its droplet.
+Each app has a persistent disk attached to its droplet, for all its persistent data, so that the droplet itself can be replaced.
+Disks are at least 10 GB, and start blank: Ansible formats a new one.
+OpenTofu refuses to destroy a disk: to really delete one, first remove `prevent_destroy` from the `app` module.
+Each app also has its own DNS zone in Cloud DNS, with an A record pointing at its droplet.
 Adding or removing an app doesn't change its droplet.
 
-At a droplet's first boot, cloud-init writes its settings and vault password to `/etc/web-app/`, installs Ansible, and runs `ansible-pull` against `main` of this repo, which configures the droplet (see [Server configuration](#server-configuration)).
-Changing the cloud-init config (the droplet's `user_data`) replaces the droplet: see [After a droplet is replaced](#after-a-droplet-is-replaced).
+At a droplet's first boot, cloud-init lets root log in with the SSH key in `local.ssh_public_key`, writes the droplet's settings and vault password to `/etc/web-app/`, installs Ansible, and runs `ansible-pull` against `local.repo_branch` of this repo, which configures the droplet (see [Server configuration](#server-configuration)).
+Changing the cloud-init config (the droplet's `user-data` metadata, which includes the SSH key) replaces the droplet: see [After a droplet is replaced](#after-a-droplet-is-replaced).
 
 You need:
 
-- [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), [OpenTofu](https://opentofu.org/docs/intro/install/), [doctl](https://docs.digitalocean.com/reference/doctl/how-to/install/) and [jq](https://jqlang.org/)
-- a DigitalOcean API token with full access, named `infra-demo-tofu-local`, exported as `DIGITALOCEAN_ACCESS_TOKEN` (OpenTofu and doctl both read it)
-- your SSH public key uploaded to DigitalOcean with the name in `local.ssh_key_name`:
+- [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), [OpenTofu](https://opentofu.org/docs/intro/install/), the [gcloud CLI](https://cloud.google.com/sdk/docs/install) and [jq](https://jqlang.org/)
+- a GCP project, with billing and the Compute Engine and Cloud DNS APIs enabled:
 
   ```sh
-  doctl compute ssh-key import inglesp --public-key-file ~/.ssh/id_ed25519.pub
+  gcloud services enable compute.googleapis.com dns.googleapis.com storage.googleapis.com
   ```
 
-- a Spaces access key named `infra-demo-tofu-state-local`, with read/write access to the state bucket (see below), exported as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
+- Application Default Credentials, which OpenTofu uses, from `gcloud auth application-default login`
 - the state passphrase, from the password manager, exported as `TF_VAR_state_passphrase`
-- each app's zone delegated to DigitalOcean: opensafely.org's DNS is on Cloudflare, which needs NS records for the app's subdomain pointing to `ns1.digitalocean.com`, `ns2.digitalocean.com` and `ns3.digitalocean.com`
+- each app's zone delegated to Cloud DNS: opensafely.org's DNS is on Cloudflare, which needs NS records for the app's subdomain pointing to the zone's name servers, from `just tofu output name_servers`. Each zone has its own name servers
 
 ```sh
 just tofu init  # once, to download the provider and connect to the state bucket
@@ -47,10 +53,17 @@ just apply      # make the changes
 It needs no credentials, and CI runs it on every pull request and on pushes to `main`.
 Its actions are pinned to commit SHAs.
 
-OpenTofu's state is kept in the `inglesp-infra-demo-tofu-state` Spaces bucket, in `lon1`, as `infra-demo-infra.tfstate`.
-The bucket was created by hand, since it can't hold its own state.
+OpenTofu's state is kept in the `inglesp-infra-demo-gcp-tofu-state` GCS bucket, in `europe-west2`, under `infra-demo-infra/`.
+The bucket was created by hand, since it can't hold its own state:
+
+```sh
+gcloud storage buckets create gs://inglesp-infra-demo-gcp-tofu-state \
+    --location=europe-west2 --uniform-bucket-level-access --public-access-prevention
+gcloud storage buckets update gs://inglesp-infra-demo-gcp-tofu-state --versioning
+```
+
 The state is encrypted with the state passphrase: if the passphrase is lost, so is the state.
-The state holds secrets: each droplet's vault password, which OpenTofu generates and puts in the droplet's `user_data`.
+The state holds secrets: each droplet's vault password, which OpenTofu generates and puts in the droplet's `user-data`.
 State is locked while OpenTofu uses it, with a lock file next to it in the bucket, so two runs can't change it at once.
 
 ## Server configuration
@@ -64,9 +77,9 @@ If applying the playbook fails, the run still deploys the image, but shows as a 
 The playbook:
 
 - installs Docker, [Dokku](https://dokku.com/) and Dokku's [letsencrypt plugin](https://github.com/dokku/dokku-letsencrypt), and sets the plugin's email and renewal cron job
-- blocks containers from DigitalOcean's metadata service, which serves the droplet's `user_data`, and so its secrets, to anything on the droplet that asks
+- blocks containers from GCE's metadata server, which serves the droplet's `user-data`, and so its secrets, to anything on the droplet that asks
 - for each app:
-    - mounts the app's volume at `/srv/<app>/data`, owned by UID 10001, which every app's image must run as (and listen on port 8000), in place of DigitalOcean's own mount under `/mnt/`
+    - formats the app's disk if it's blank, and mounts it at `/srv/<app>/data`, owned by UID 10001, which every app's image must run as (and listen on port 8000)
     - creates the app in Dokku, and sets its domain, its environment (`env`, plus its secrets) and its ports
     - mounts the volume into the app's container at `/data`, where the app keeps its database
 - installs the deploy service and the alerts (see below)
@@ -152,16 +165,15 @@ Apply before pushing: otherwise the droplet's next run waits for a volume that d
 
 ### After a droplet is replaced
 
-The droplet's apps' data is on their volumes, which are moved to the new droplet, but everything else needs setting up again.
-The new droplet has a new IP address and new SSH host keys, so first remove the old keys, using the old IP address:
+The droplet's apps' data is on their disks, which are moved to the new droplet, but everything else needs setting up again.
+The new droplet keeps the old one's IP address, so DNS doesn't change, but it has new SSH host keys, so first remove the old ones:
 
 ```sh
-ssh-keygen -R <old IP address>
+ssh-keygen -R <IP address>
 ```
 
 The new droplet configures itself at first boot, which takes a few minutes, and within a minute after that, deploys its apps and enables TLS.
 `cloud-init status --wait` on the droplet waits for the first boot to finish.
-The DNS records can take up to 30 minutes to point at the new IP address everywhere.
 
 ### Roll back to an earlier build
 

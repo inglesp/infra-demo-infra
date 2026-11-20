@@ -1,47 +1,28 @@
-# The droplets, and the apps each one runs. OpenTofu and Ansible both read this.
+# The droplets (GCE instances), and the apps each one runs. OpenTofu and
+# Ansible both read this.
 #
 # droplets:
 #   <droplet>:
-#     region: lon1
-#     size: s-1vcpu-1gb
+#     zone: europe-west2-a
+#     size: e2-small                 # GCE machine type
 #     apps:
 #       <app>:                       # unique across all droplets
 #         domain: <app>.example.org  # gets its own DNS zone
-#         volume_size: 1             # GiB
+#         volume_size: 10            # GB, at least 10
 #         image: ghcr.io/<owner>/<image>
 #         image_tag: latest
 #         env:                       # the app's environment; secrets go in the droplet's vault
 #           SOME_SETTING: ...
 droplets:
-  demo-1:
-    region: lon1
-    size: s-1vcpu-1gb
+  gcp-1:
+    zone: europe-west2-a
+    size: e2-small
     apps:
-      alpha:
-        domain: alpha-infra-demo.opensafely.org
-        volume_size: 1
+      delta:
+        domain: delta-infra-demo.opensafely.org
+        volume_size: 10
         image: ghcr.io/inglesp/infra-demo-app
         image_tag: latest
         env:
-          DJANGO_ALLOWED_HOSTS: alpha-infra-demo.opensafely.org
-          DEMO_NON_SECRET: alpha not a secret
-  demo-2:
-    region: lon1
-    size: s-1vcpu-1gb
-    apps:
-      beta:
-        domain: beta-infra-demo.opensafely.org
-        volume_size: 1
-        image: ghcr.io/inglesp/infra-demo-app
-        image_tag: latest
-        env:
-          DJANGO_ALLOWED_HOSTS: beta-infra-demo.opensafely.org
-          DEMO_NON_SECRET: beta not a secret
-      gamma:
-        domain: gamma-infra-demo.opensafely.org
-        volume_size: 2
-        image: ghcr.io/inglesp/infra-demo-app
-        image_tag: sha-e64f51c0b8228d828ae3902d0314d803217fce79
-        env:
-          DJANGO_ALLOWED_HOSTS: gamma-infra-demo.opensafely.org
-          DEMO_NON_SECRET: gamma not a secret
+          DJANGO_ALLOWED_HOSTS: delta-infra-demo.opensafely.org
+          DEMO_NON_SECRET: delta not a secret

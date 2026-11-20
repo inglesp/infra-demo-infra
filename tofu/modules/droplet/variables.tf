@@ -3,19 +3,29 @@ variable "name" {
   type        = string
 }
 
-variable "region" {
-  description = "The DigitalOcean region, e.g. lon1"
+variable "zone" {
+  description = "The GCE zone, e.g. europe-west2-a"
   type        = string
 }
 
 variable "size" {
-  description = "The droplet size, e.g. s-1vcpu-1gb"
+  description = "The GCE machine type, e.g. e2-small"
   type        = string
 }
 
-variable "ssh_key_ids" {
-  description = "IDs of the DigitalOcean SSH keys that can log in as root"
-  type        = list(string)
+variable "ssh_public_key" {
+  description = "The SSH public key that can log in as root"
+  type        = string
+}
+
+variable "subnetwork" {
+  description = "The ID of the subnetwork the droplet is on"
+  type        = string
+}
+
+variable "network_tag" {
+  description = "The network tag that the firewall rules target"
+  type        = string
 }
 
 variable "repo_url" {

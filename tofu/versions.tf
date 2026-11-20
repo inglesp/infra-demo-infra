@@ -1,12 +1,11 @@
 terraform {
-  # State encryption with a variable passphrase needs 1.8, and locking with a
-  # lock file needs 1.10
+  # State encryption with a variable passphrase needs 1.8
   required_version = ">= 1.10"
 
   required_providers {
-    digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = "~> 2.0"
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -15,4 +14,9 @@ terraform {
   }
 }
 
-provider "digitalocean" {}
+# Credentials come from Application Default Credentials (gcloud auth
+# application-default login)
+provider "google" {
+  project = local.project
+  region  = local.region
+}

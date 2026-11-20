@@ -15,8 +15,9 @@ app_uid: 10001
 # The app's volume, as OpenTofu names it
 volume_name: "{{ app_name }}-data"
 
-# The volume's device, named after the volume, which is unique
-volume_device: /dev/disk/by-id/scsi-0DO_Volume_{{ volume_name }}
+# The volume's device, named after the device name OpenTofu attaches it with,
+# which is the volume's name, which is unique
+volume_device: /dev/disk/by-id/google-{{ volume_name }}
 
 # Where the volume, and so all of the app's persistent data, is mounted
 data_dir: /srv/{{ app_name }}/data

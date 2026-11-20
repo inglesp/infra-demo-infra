@@ -1,19 +1,19 @@
 terraform {
   required_providers {
-    digitalocean = {
-      source = "digitalocean/digitalocean"
+    google = {
+      source = "hashicorp/google"
     }
   }
 }
 
-# Ansible finds the volume by this name, so the two must match
-resource "digitalocean_volume" "data" {
-  name                     = "${var.name}-data"
-  region                   = var.region
-  size                     = var.volume_size
-  initial_filesystem_type  = "ext4"
-  initial_filesystem_label = "data"
-  description              = "Persistent data for ${var.name}"
+# Ansible finds the disk by this name, so the two must match. It starts blank:
+# Ansible formats it.
+resource "google_compute_disk" "data" {
+  name        = "${var.name}-data"
+  zone        = var.droplet.zone
+  type        = "pd-balanced"
+  size        = var.volume_size
+  description = "Persistent data for ${var.name}"
 
   lifecycle {
     # Holds all the app's persistent data, so OpenTofu refuses to destroy it
@@ -21,27 +21,24 @@ resource "digitalocean_volume" "data" {
   }
 }
 
-# A separate resource, rather than the droplet's volume_ids, so that adding an
-# app doesn't change the droplet
-resource "digitalocean_volume_attachment" "data" {
-  droplet_id = var.droplet.id
-  volume_id  = digitalocean_volume.data.id
+# A separate resource, rather than the instance's attached_disk, so that adding
+# an app doesn't change the droplet. The device name gives the disk its path,
+# /dev/disk/by-id/google-<device_name>, on the droplet.
+resource "google_compute_attached_disk" "data" {
+  instance    = var.droplet.id
+  disk        = google_compute_disk.data.id
+  device_name = google_compute_disk.data.name
 }
 
-resource "digitalocean_domain" "this" {
-  name = var.domain
+resource "google_dns_managed_zone" "this" {
+  name     = replace(var.domain, ".", "-")
+  dns_name = "${var.domain}."
 }
 
-resource "digitalocean_record" "a" {
-  domain = digitalocean_domain.this.id
-  type   = "A"
-  name   = "@"
-  value  = var.droplet.ipv4_address
-}
-
-resource "digitalocean_record" "aaaa" {
-  domain = digitalocean_domain.this.id
-  type   = "AAAA"
-  name   = "@"
-  value  = var.droplet.ipv6_address
+resource "google_dns_record_set" "a" {
+  managed_zone = google_dns_managed_zone.this.name
+  name         = google_dns_managed_zone.this.dns_name
+  type         = "A"
+  ttl          = 300
+  rrdatas      = [var.droplet.ipv4_address]
 }

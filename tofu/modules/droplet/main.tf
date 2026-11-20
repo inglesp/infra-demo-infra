@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    digitalocean = {
-      source = "digitalocean/digitalocean"
+    google = {
+      source = "hashicorp/google"
     }
     random = {
       source = "hashicorp/random"
@@ -9,15 +9,30 @@ terraform {
   }
 }
 
-# cloud-init runs this at the droplet's first boot. It writes the droplet's
-# settings and vault password, installs Ansible, and runs ansible-pull to
-# configure the droplet. Nothing here is about the droplet's apps, so adding
-# or removing an app doesn't replace the droplet.
+# cloud-init runs this at the droplet's first boot. It lets root log in with
+# the SSH key, writes the droplet's settings and vault password, installs
+# Ansible, and runs ansible-pull to configure the droplet. Nothing here is
+# about the droplet's apps, so adding or removing an app doesn't replace the
+# droplet.
 locals {
   user_data = "#cloud-config\n${yamlencode({
+    # Otherwise cloud-init makes root's key print a message and disconnect
+    disable_root   = false
     package_update = true
     packages       = ["ansible"]
     write_files = [
+      {
+        path        = "/root/.ssh/authorized_keys"
+        permissions = "0600"
+        content     = "${var.ssh_public_key}\n"
+      },
+      {
+        # sshd uses the first value it reads, and reads these files in order,
+        # so this comes before any setting from the image
+        path        = "/etc/ssh/sshd_config.d/00-root-login.conf"
+        permissions = "0644"
+        content     = "PermitRootLogin prohibit-password\n"
+      },
       {
         path        = "/etc/web-app/vars.json"
         permissions = "0600"
@@ -34,6 +49,8 @@ locals {
       },
     ]
     runcmd = [
+      # In case sshd started before the config above was written
+      ["systemctl", "try-reload-or-restart", "ssh"],
       [
         "ansible-pull",
         "--url", var.repo_url,
@@ -48,80 +65,60 @@ locals {
       ],
     ]
   })}"
+
+  # europe-west2-a is in europe-west2
+  region = join("-", slice(split("-", var.zone), 0, 2))
 }
 
-resource "digitalocean_droplet" "this" {
-  name     = var.name
-  image    = "ubuntu-24-04-x64"
-  region   = var.region
-  size     = var.size
-  ssh_keys = var.ssh_key_ids
-  ipv6     = true
-  # Changing this replaces the droplet
-  user_data = local.user_data
+# GCE updates an instance's metadata in place, and cloud-init only reads it at
+# first boot, so the instance is replaced when this changes
+resource "terraform_data" "user_data" {
+  input = local.user_data
+}
+
+# A static address, so that the droplet keeps its IP address when it's
+# stopped, or replaced
+resource "google_compute_address" "this" {
+  name   = var.name
+  region = local.region
+}
+
+resource "google_compute_instance" "this" {
+  name         = var.name
+  zone         = var.zone
+  machine_type = var.size
+  tags         = [var.network_tag]
+
+  # Changing the machine type needs the instance stopping
+  allow_stopping_for_update = true
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
+      size  = 10
+    }
+  }
+
+  network_interface {
+    subnetwork = var.subnetwork
+    access_config {
+      nat_ip = google_compute_address.this.address
+    }
+  }
+
+  # Ubuntu's cloud-init reads its config from user-data
+  metadata = {
+    user-data = local.user_data
+  }
+
+  # No service_account block, so the instance has no service account, and the
+  # metadata server has no credentials for anything on it to take
 
   lifecycle {
-    # Changing either would replace the droplet, so changes only apply to
-    # new droplets
-    ignore_changes = [image, ssh_keys]
-  }
-}
-
-locals {
-  anywhere = ["0.0.0.0/0", "::/0"]
-}
-
-resource "digitalocean_firewall" "this" {
-  name        = var.name
-  droplet_ids = [digitalocean_droplet.this.id]
-
-  # Open to everyone until SSH is closed; logins are key-only
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "22"
-    source_addresses = local.anywhere
-  }
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "80"
-    source_addresses = local.anywhere
-  }
-
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "443"
-    source_addresses = local.anywhere
-  }
-
-  # HTTP/3
-  inbound_rule {
-    protocol         = "udp"
-    port_range       = "443"
-    source_addresses = local.anywhere
-  }
-
-  # Needed for IPv6 path MTU discovery, and allows ping
-  inbound_rule {
-    protocol         = "icmp"
-    source_addresses = local.anywhere
-  }
-
-  outbound_rule {
-    protocol              = "tcp"
-    port_range            = "1-65535"
-    destination_addresses = local.anywhere
-  }
-
-  outbound_rule {
-    protocol              = "udp"
-    port_range            = "1-65535"
-    destination_addresses = local.anywhere
-  }
-
-  outbound_rule {
-    protocol              = "icmp"
-    destination_addresses = local.anywhere
+    # Changing the image would replace the droplet, so changes only apply to
+    # new droplets. Volumes are attached by the app module.
+    ignore_changes       = [boot_disk[0].initialize_params[0].image, attached_disk]
+    replace_triggered_by = [terraform_data.user_data]
   }
 }
 
